@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["ES2017", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["src/shared/*"],
+      "@utils/*": ["src/ui/utils/*"]
+    }
+  },
+  "include": ["src/ui/**/*", "src/shared/**/*", "vite.config.ts"],
+  "exclude": ["src/plugin/**/*", "node_modules", "dist"]
+}

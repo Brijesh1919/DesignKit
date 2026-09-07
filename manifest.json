@@ -1,0 +1,8 @@
+{
+  "name": "DesignKit",
+  "id": "designkit-all-in-one-toolkit",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "dist/index.html",
+  "editorType": ["figma"]
+}

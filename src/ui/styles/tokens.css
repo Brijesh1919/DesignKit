@@ -1,0 +1,118 @@
+/* ============================================================
+   Design Tokens — single source of truth for all visual values
+   ============================================================ */
+
+:root {
+  /* ---- Color: Backgrounds ---- */
+  --c-bg:             #F2F4F8;
+  --c-surface:        #FFFFFF;
+  --c-surface-subtle: #FAFBFC;
+
+  /* ---- Color: Borders ---- */
+  --c-border:        #E4E7ED;
+  --c-border-subtle: #EEF0F5;
+  --c-border-strong: #CBD0D9;
+
+  /* ---- Color: Text ---- */
+  --c-text-primary:   #0F1729;
+  --c-text-secondary: #495567;
+  --c-text-tertiary:  #8B95A3;
+  --c-text-disabled:  #C5CAD3;
+  --c-text-on-accent: #FFFFFF;
+
+  /* ---- Color: Accent (Blue) ---- */
+  --c-accent:        #2563EB;
+  --c-accent-hover:  #1D4ED8;
+  --c-accent-active: #1E40AF;
+  --c-accent-subtle: #EFF6FF;
+  --c-accent-border: #BFDBFE;
+
+  /* ---- Color: Semantic ---- */
+  --c-success:        #059669;
+  --c-success-subtle: #ECFDF5;
+  --c-success-border: #A7F3D0;
+  --c-success-text:   #065F46;
+
+  --c-warning:        #D97706;
+  --c-warning-subtle: #FFFBEB;
+  --c-warning-border: #FDE68A;
+  --c-warning-text:   #92400E;
+
+  --c-error:          #DC2626;
+  --c-error-subtle:   #FEF2F2;
+  --c-error-border:   #FECACA;
+  --c-error-text:     #991B1B;
+
+  /* ---- Color: Sidebar ---- */
+  --c-sidebar-bg:          #F5F6FA;
+  --c-sidebar-item-hover:  #EBEDF3;
+  --c-sidebar-item-active: #E8F0FE;
+  --c-sidebar-item-active-text: #1A56DB;
+
+  /* ---- Spacing (4px base grid) ---- */
+  --sp-0:  0px;
+  --sp-px: 1px;
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  20px;
+  --sp-6:  24px;
+  --sp-7:  28px;
+  --sp-8:  32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+  --sp-16: 64px;
+
+  /* ---- Typography ---- */
+  --font:      'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+
+  --fs-2xs: 10px;
+  --fs-xs:  11px;
+  --fs-sm:  12px;
+  --fs-base: 13px;
+  --fs-md:  14px;
+  --fs-lg:  15px;
+  --fs-xl:  16px;
+  --fs-2xl: 18px;
+  --fs-3xl: 22px;
+
+  --fw-regular:  400;
+  --fw-medium:   500;
+  --fw-semibold: 600;
+  --fw-bold:     700;
+
+  --lh-tight:   1.2;
+  --lh-snug:    1.35;
+  --lh-normal:  1.5;
+  --lh-relaxed: 1.65;
+
+  /* ---- Border Radius ---- */
+  --r-xs:   3px;
+  --r-sm:   5px;
+  --r-md:   7px;
+  --r-lg:   10px;
+  --r-xl:   14px;
+  --r-2xl:  18px;
+  --r-full: 9999px;
+
+  /* ---- Shadows ---- */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 3px 10px rgba(0, 0, 0, 0.07), 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08), 0 3px 6px rgba(0, 0, 0, 0.04);
+  --shadow-xl: 0 20px 48px rgba(0, 0, 0, 0.10), 0 6px 12px rgba(0, 0, 0, 0.05);
+
+  /* ---- Layout ---- */
+  --header-h:  52px;
+  --sidebar-w: 196px;
+
+  /* ---- Animation ---- */
+  --ease:     cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in:  cubic-bezier(0.4, 0, 1, 1);
+  --dur-fast: 100ms;
+  --dur-base: 170ms;
+  --dur-slow: 280ms;
+}
