@@ -228,11 +228,17 @@ function preserveCardCornerRadius(card: SceneNode, targetW: number, targetH: num
       fr.clipsContent = true
     } catch (_) {}
 
-    // Synchronize onto background rectangles or card surfaces
+    // Synchronize onto background rectangles or card surfaces (never product images!)
     for (const c of fr.children) {
+      if (isImageNode(c)) continue
+
       const isCardBg =
         isBackgroundNode(c, fr.width, fr.height) ||
-        (c.type === 'RECTANGLE' && nX(c) <= 8 && nY(c) <= 8 && c.width >= targetW * 0.50)
+        (c.type === 'RECTANGLE' &&
+          nX(c) <= 8 &&
+          nY(c) <= 8 &&
+          c.width >= targetW * 0.50 &&
+          c.height >= targetH * 0.40)
       if (isCardBg) {
         try {
           if ('topLeftRadius' in c) {
@@ -674,16 +680,41 @@ interface NavElements {
  * Should NEVER be transformed into a mobile navigation with hamburger button.
  */
 function isAnnouncementBar(node: SceneNode): boolean {
+  if (!isValidFigmaNode(node)) return false
   const name = (node.name || '').toLowerCase()
-  if (/(announce|promo|banner|notice|alert)/i.test(name) && !/(nav|header|topbar|top-bar)/i.test(name)) {
+
+  // 1. Explicit announcement/promo/marquee keywords
+  if (/(announce|promo|marquee|strip|notice|alert|broadcast|offer|deal|discount)/i.test(name)) {
     return true
   }
-  if (node.height <= 48 && 'children' in node) {
+
+  // 2. Any thin strip at or near the top of the canvas (height <= 56px)
+  if (node.height <= 56) {
+    if (/(banner|bar|top|header|strip|sale|shipping)/i.test(name) && !/(sidebar|nav-links|menu-list)/i.test(name)) {
+      if ('children' in node) {
+        const kids = visibleChildren(node).filter(k => !isBackgroundNode(k, node.width, node.height))
+        const hasBrand = kids.some(k => isLikelyBrandElement(k))
+        const navLinks = kids.filter(k => isNavItemCandidate(k))
+        if (!hasBrand || navLinks.length <= 1) return true
+      } else {
+        return true
+      }
+    }
+  }
+
+  // 3. Structural check: thin row (<= 52px) without brand logo and without multiple nav links
+  if (node.height <= 52 && 'children' in node) {
     const kids = visibleChildren(node).filter(k => !isBackgroundNode(k, node.width, node.height))
     const hasBrand = kids.some(k => isLikelyBrandElement(k))
-    const textKids = kids.filter(k => k.type === 'TEXT')
-    if (!hasBrand && textKids.length <= 1) return true
+    const navLinks = kids.filter(k => isNavItemCandidate(k))
+    if (!hasBrand && navLinks.length <= 2) return true
   }
+
+  // 4. Pure text banner at top
+  if (node.type === 'TEXT' && node.height <= 52) {
+    return true
+  }
+
   return false
 }
 
@@ -871,6 +902,9 @@ function isNavItemCandidate(n: SceneNode): boolean {
  */
 function isNavLinksSection(node: SceneNode, parentH: number, origY: number): boolean {
   if (!isValidFigmaNode(node)) return false
+
+  // Announcement bar / promo banner is NEVER a nav links section to be consumed
+  if (isAnnouncementBar(node)) return false
 
   const name = (node.name || '').toLowerCase()
 
@@ -1403,6 +1437,33 @@ async function transformAutoLayoutHorizontal(
   log: string[]
 ): Promise<number> {
   const kids = node.children.filter(c => c.visible !== false)
+
+  // Announcement bar fast-path: preserve full width, compact height, center contents
+  if (isAnnouncementBar(node)) {
+    const barH = Math.max(36, Math.min(node.height, 52))
+    node.paddingLeft = 12
+    node.paddingRight = 12
+    node.paddingTop = 0
+    node.paddingBottom = 0
+    node.primaryAxisAlignItems = 'CENTER'
+    node.counterAxisAlignItems = 'CENTER'
+    doResize(node, targetW, barH)
+    preserveCardCornerRadius(node, targetW, barH)
+    for (const c of kids) {
+      if (c.type === 'TEXT') {
+        const txt = c as TextNode
+        try {
+          if (typeof txt.fontName !== 'symbol') {
+            await loadFontSafe(txt.fontName as FontName)
+          }
+          txt.textAlignHorizontal = 'CENTER'
+        } catch (_) {}
+      }
+    }
+    log.push(`"${node.name}" [ANNOUNCEMENT_BAR|AL]: preserved top banner (${targetW}x${barH}px)`)
+    return barH
+  }
+
   const totalChildW = kids.reduce((s, c) => s + c.width, 0) + (kids.length - 1) * (node.itemSpacing || 0)
   const availW = targetW - (node.paddingLeft || 0) - (node.paddingRight || 0)
 
@@ -1420,9 +1481,8 @@ async function transformAutoLayoutHorizontal(
   if (totalChildW > availW && vp.width < 768) {
     // Children won't fit horizontally → switch to vertical
     node.layoutMode = 'VERTICAL'
-    if (!node.itemSpacing || node.itemSpacing > SPACING.NORMAL) {
-      node.itemSpacing = SPACING.NORMAL
-    }
+    node.primaryAxisAlignItems = 'MIN'
+    node.itemSpacing = Math.max(20, node.itemSpacing || 20)
 
     // Resize children to fill width
     for (const child of kids) {
@@ -1430,16 +1490,18 @@ async function transformAutoLayoutHorizontal(
       try { (child as any).layoutAlign = 'STRETCH' } catch (_) {}
       try { (child as any).layoutSizingHorizontal = 'FILL' } catch (_) {}
 
+      let chH = child.height
       if (child.type === 'TEXT') {
-        await reflowTextNode(child as TextNode, newAvailW, vp, log)
+        chH = await reflowTextNode(child as TextNode, newAvailW, vp, log)
       } else if (isImageNode(child)) {
         const aspect = child.height / Math.max(1, child.width)
-        const imgH = Math.round(newAvailW * aspect)
-        doResize(child, newAvailW, imgH)
+        chH = Math.round(newAvailW * aspect)
+        doResize(child, newAvailW, chH)
       } else if ('children' in child) {
-        await reflowNode(child, vp, newAvailW, log)
+        chH = await reflowNode(child, vp, newAvailW, log, true)
+        doResize(child, newAvailW, Math.max(chH, child.height))
       }
-      preserveCardCornerRadius(child, newAvailW, child.height)
+      preserveCardCornerRadius(child, newAvailW, Math.max(chH, child.height))
     }
 
     try {
@@ -2049,7 +2111,8 @@ async function transformNavigationNode(
 async function transformRepeatedCollection(
   node: SceneNode,
   vp: RVP,
-  log: string[]
+  log: string[],
+  parentW?: number
 ): Promise<number> {
   if (!('children' in node)) return node.height
 
@@ -2058,7 +2121,11 @@ async function transformRepeatedCollection(
   // Flatten AL if present (we take over layout)
   if ('layoutMode' in fr && fr.layoutMode !== 'NONE') fr.layoutMode = 'NONE'
 
-  const contentW = vp.width - vp.padding * 2
+  const isNested = !!parentW && parentW < vp.width
+  const containerW = parentW ? Math.min(parentW, vp.width) : vp.width
+  const baseX = isNested ? 0 : vp.padding
+  const contentW = isNested ? containerW : Math.max(10, containerW - vp.padding * 2)
+
   const allKids = visibleChildren(node)
 
   // Separate backgrounds, headers, and collection items
@@ -2081,8 +2148,7 @@ async function transformRepeatedCollection(
     ? Math.floor((contentW - vp.colGap) / 2)
     : contentW
 
-  let localY = vp.padding
-  const baseX = vp.padding
+  let localY = isNested ? 0 : vp.padding
 
   // 1. Section header(s)
   for (const h of headerNodes) {
@@ -2102,6 +2168,8 @@ async function transformRepeatedCollection(
     if (Math.abs(dy) > 20) return dy
     return nX(a) - nX(b)
   })
+
+  const cardGap = cols === 1 ? 20 : vp.colGap
 
   for (let i = 0; i < collectionItems.length; i += cols) {
     const rowItems = collectionItems.slice(i, i + cols)
@@ -2126,16 +2194,16 @@ async function transformRepeatedCollection(
       preserveCardCornerRadius(card, itemW, maxRowH)
     }
 
-    localY += maxRowH + (cols === 1 ? SPACING.NORMAL : vp.colGap)
+    localY += maxRowH + cardGap
   }
 
-  const finalH = localY + vp.padding
-  doResize(fr, vp.width, finalH)
-  preserveCardCornerRadius(fr, vp.width, finalH)
+  const finalH = localY + (isNested ? 0 : vp.padding)
+  doResize(fr, containerW, finalH)
+  preserveCardCornerRadius(fr, containerW, finalH)
 
   for (const bg of bgNodes) {
     setPos(bg, 0, 0)
-    doResize(bg, vp.width, finalH)
+    doResize(bg, containerW, finalH)
   }
 
   log.push(`"${node.name}" [REPEATED_COLLECTION]: ${collectionItems.length} items → ${cols}-column grid (${finalH}px)`)
@@ -2286,8 +2354,10 @@ async function transformHorizontalGroup(
   const fr = node as FrameNode
   if ('layoutMode' in fr && fr.layoutMode !== 'NONE') fr.layoutMode = 'NONE'
 
+  const isNested = !!parentW && parentW < vp.width
   const containerW = parentW ? Math.min(parentW, vp.width) : vp.width
-  const contentW = Math.max(10, containerW - vp.padding * 2)
+  const baseX = isNested ? 0 : vp.padding
+  const contentW = isNested ? containerW : Math.max(10, containerW - vp.padding * 2)
   const allKids = visibleChildren(node)
   const bgNodes = allKids.filter(k => isBackgroundNode(k, fr.width, fr.height))
   const fgKids = allKids.filter(k => !isBackgroundNode(k, fr.width, fr.height))
@@ -2306,8 +2376,8 @@ async function transformHorizontalGroup(
     ? Math.floor((contentW - vp.colGap) / 2)
     : contentW
 
-  let localY = vp.padding
-  const baseX = vp.padding
+  let localY = isNested ? 0 : vp.padding
+  const cardGap = cols === 1 ? 20 : vp.colGap
 
   for (let i = 0; i < fgKids.length; i += cols) {
     const rowItems = fgKids.slice(i, i + cols)
@@ -2328,10 +2398,10 @@ async function transformHorizontalGroup(
       preserveCardCornerRadius(item, itemW, maxRowH)
     }
 
-    localY += maxRowH + (cols === 1 ? SPACING.NORMAL : vp.colGap)
+    localY += maxRowH + cardGap
   }
 
-  const finalH = localY + vp.padding
+  const finalH = localY + (isNested ? 0 : vp.padding)
   doResize(fr, containerW, finalH)
   preserveCardCornerRadius(fr, containerW, finalH)
 
@@ -2368,20 +2438,13 @@ async function transformSingleColumn(
   isNestedChild = false,  // true when called from reflowNode as a child element
   parentW?: number
 ): Promise<number> {
-  // contentW = full usable width at this level
-  // For a top-level section: containerW - 2*padding
-  // For a nested child: the parentW already passed in IS the content width
   const containerW = parentW
     ? Math.min(parentW, vp.width)
     : isNestedChild ? Math.min(node.width || vp.width, vp.width) : vp.width
-  const ownPaddingL = isNestedChild ? 0 : vp.padding
-  const ownPaddingR = isNestedChild ? 0 : vp.padding
-  const contentW = Math.max(10, containerW - ownPaddingL - ownPaddingR)
-  const baseX = ownPaddingL
 
   if (!('children' in node)) {
     if (node.type === 'TEXT') {
-      const h = await reflowTextNode(node as TextNode, contentW, vp, log)
+      const h = await reflowTextNode(node as TextNode, containerW, vp, log)
       return h + (isNestedChild ? 0 : vp.padding * 2)
     }
     return node.height
@@ -2394,6 +2457,49 @@ async function transformSingleColumn(
   const bgNodes = allKids.filter(k => isBackgroundNode(k, fr.width, fr.height))
   const fgKids = allKids.filter(k => !isBackgroundNode(k, fr.width, fr.height))
 
+  // Announcement bar fast-path: preserve full width, compact height, center contents with background intact
+  if (isAnnouncementBar(node)) {
+    const barH = Math.max(36, Math.min(node.height, 52))
+    doResize(fr, vp.width, barH)
+    preserveCardCornerRadius(fr, vp.width, barH)
+    for (const bg of bgNodes) {
+      setPos(bg, 0, 0)
+      doResize(bg, vp.width, barH)
+      preserveCardCornerRadius(bg, vp.width, barH)
+    }
+    for (const kid of fgKids) {
+      if (kid.type === 'TEXT') {
+        const textNode = kid as TextNode
+        try {
+          if (typeof textNode.fontName !== 'symbol') {
+            await loadFontSafe(textNode.fontName as FontName)
+          }
+          textNode.textAlignHorizontal = 'CENTER'
+        } catch (_) {}
+        const tw = vp.width - 24
+        await reflowTextNode(textNode, tw, vp)
+        const ty = Math.round((barH - textNode.height) / 2)
+        setPos(textNode, 12, Math.max(0, ty))
+      }
+    }
+    log.push(`"${node.name}" [ANNOUNCEMENT_BAR]: preserved top banner (390x${barH}px)`)
+    return barH
+  }
+
+  // Card detection: an inner container with visual boundaries (fills/strokes/bg) or card structure
+  const isCard = isNestedChild && (
+    hasVisibleFillOrStroke(fr) ||
+    bgNodes.length > 0 ||
+    looksLikeCard(fr)
+  )
+
+  // Card padding: if it is a card with visual boundaries, text & controls must have internal padding
+  const cardPad = isCard ? 14 : 0
+  const ownPaddingL = isNestedChild ? cardPad : vp.padding
+  const ownPaddingR = isNestedChild ? cardPad : vp.padding
+  const contentW = Math.max(10, containerW - ownPaddingL - ownPaddingR)
+  const baseX = ownPaddingL
+
   // Sort by original Y (then X for same-level items)
   fgKids.sort((a, b) => {
     const dy = nY(a) - nY(b)
@@ -2402,7 +2508,6 @@ async function transformSingleColumn(
   })
 
   // Detect original alignment of children relative to the DESKTOP container
-  // so we can preserve it in the mobile layout
   const alignment = detectAlignmentIntent(fgKids, fr.width)
 
   // Log alignment for debugging
@@ -2411,10 +2516,11 @@ async function transformSingleColumn(
     contentWidth: contentW,
     horizontalPadding: ownPaddingL + ownPaddingR,
     alignment,
+    isCard,
     childCount: fgKids.length,
   })
 
-  let localY = isNestedChild ? 0 : vp.padding
+  let localY = isCard ? cardPad : (isNestedChild ? 0 : vp.padding)
 
   for (const kid of fgKids) {
     const kidAlign = getChildAlignment(kid, fr.width, alignment)
@@ -2487,16 +2593,16 @@ async function transformSingleColumn(
     } else if (isImageNode(kid)) {
       const origW = kid.width, origH = kid.height
       const aspect = origH / Math.max(1, origW)
+      // If it's a card image, span full width of the card edge-to-edge
+      const isCardImage = isCard && (origW >= fr.width * 0.70 || nY(kid) <= 12)
       const isSubstantialImg = origW >= 140 || origW >= fr.width * 0.25 || origH >= 100
-      const imgW = isSubstantialImg ? contentW : Math.min(origW, contentW)
+      const imgW = isCardImage ? containerW : (isSubstantialImg ? contentW : Math.min(origW, contentW))
       const maxH = Math.round(vp.width * 0.90)
-      const imgH = isSubstantialImg
-        ? Math.min(Math.round(imgW * aspect), maxH)
-        : Math.min(origH, maxH)
+      const imgH = Math.min(Math.round(imgW * aspect), maxH)
 
       doResize(kid, imgW, imgH)
       preserveCardCornerRadius(kid, imgW, imgH)
-      const x = isSubstantialImg ? baseX : alignedX(imgW, contentW, baseX, kidAlign)
+      const x = isCardImage ? 0 : (imgW >= contentW * 0.90 ? baseX : alignedX(imgW, contentW, baseX, kidAlign))
       setPos(kid, x, localY)
       localY += imgH + SPACING.NORMAL
 
@@ -2506,8 +2612,21 @@ async function transformSingleColumn(
       localY += kid.height + SPACING.SMALL
 
     } else if ('children' in kid) {
-      // Small badge, chip, or tag (e.g. "NEW", "BETA")
+      // Small badge, chip, or tag (e.g. "NEW", "BETA", "HOT")
       const isSmallBadge = kid.height <= 36 && kid.width <= 140 && visibleChildren(kid).length <= 2
+      const origX = nX(kid)
+      const origY = nY(kid)
+      const isCornerOverlayBadge = isCard && isSmallBadge && origX <= 28 && origY <= 28
+
+      if (isCornerOverlayBadge) {
+        // Overlay badge sits in the corner over the card image without shifting content flow
+        const targetBadgeW = Math.min(kid.width, contentW)
+        doResize(kid, targetBadgeW, kid.height)
+        await reflowNode(kid, vp, targetBadgeW, log, true)
+        setPos(kid, 12, 12)
+        continue
+      }
+
       const targetCardW = isSmallBadge ? Math.min(kid.width, contentW) : contentW
 
       doResize(kid, targetCardW, kid.height)
@@ -2521,7 +2640,10 @@ async function transformSingleColumn(
 
       const x = isSmallBadge ? alignedX(targetCardW, contentW, baseX, kidAlign) : baseX
       setPos(kid, x, localY)
-      localY += actualH + SPACING.NORMAL
+
+      // Gap after cards: 20px between stacked cards
+      const gapAfter = looksLikeCard(kid) ? 20 : SPACING.NORMAL
+      localY += actualH + gapAfter
 
     } else {
       const isDivider = kid.height <= 4 && kid.width >= fr.width * 0.50
@@ -2533,7 +2655,7 @@ async function transformSingleColumn(
     }
   }
 
-  const finalH = localY + (isNestedChild ? 0 : vp.padding)
+  const finalH = localY + (isCard ? cardPad : (isNestedChild ? 0 : vp.padding))
   const finalContainerW = isNestedChild ? containerW : vp.width
   doResize(fr, finalContainerW, finalH)
   preserveCardCornerRadius(fr, finalContainerW, finalH)
@@ -2544,7 +2666,7 @@ async function transformSingleColumn(
     preserveCardCornerRadius(bg, finalContainerW, finalH)
   }
 
-  log.push(`"${node.name}" [SINGLE_COLUMN|${alignment}]: ${fgKids.length} items stacked (${finalH}px, nested=${isNestedChild})`)
+  log.push(`"${node.name}" [SINGLE_COLUMN|${alignment}]: ${fgKids.length} items stacked (${finalH}px, nested=${isNestedChild}, card=${isCard})`)
   return finalH
 }
 
@@ -2618,7 +2740,7 @@ async function reflowNode(
       return transformTableNode(node, vp, log)
 
     case 'REPEATED_COLLECTION':
-      return transformRepeatedCollection(node, vp, log)
+      return transformRepeatedCollection(node, vp, log, parentW)
 
     case 'HORIZONTAL_GROUP':
       return transformHorizontalGroup(node, vp, log, parentW)
@@ -2653,13 +2775,15 @@ function verifyAndCorrectSectionOverlaps(
     if (!isValidFigmaNode(prev) || !isValidFigmaNode(cur)) continue
 
     const prevBottom = nY(prev) + prev.height
-    const expectedY = prevBottom + SPACING.SECTION
+    // An announcement bar sits flush against the navigation bar directly below it (gap = 0)
+    const gap = (i === 1 && isAnnouncementBar(prev)) ? 0 : SPACING.SECTION
+    const expectedY = prevBottom + gap
     const curY = nY(cur)
 
     if (curY !== expectedY || nX(cur) !== 0) {
       setPos(cur, 0, expectedY)
       adjustedCount++
-      log.push(`[SPACE] "${cur.name}" positioned at Y=${expectedY}px (gap=${SPACING.SECTION}px)`)
+      log.push(`[SPACE] "${cur.name}" positioned at Y=${expectedY}px (gap=${gap}px)`)
     }
   }
 
@@ -2893,7 +3017,7 @@ export async function applyResponsiveEngine(
           sectionH = await transformTableNode(section, vp, log)
           break
         case 'REPEATED_COLLECTION':
-          sectionH = await transformRepeatedCollection(section, vp, log)
+          sectionH = await transformRepeatedCollection(section, vp, log, vp.width)
           break
         case 'HORIZONTAL_GROUP':
           sectionH = await transformHorizontalGroup(section, vp, log, vp.width)
@@ -2928,7 +3052,8 @@ export async function applyResponsiveEngine(
       }
 
       const finalH = isValidFigmaNode(activeSection) ? activeSection.height : sectionH
-      currentY = (isValidFigmaNode(activeSection) ? nY(activeSection) : currentY) + finalH + SPACING.SECTION
+      const gap = (i === 0 && isAnnouncementBar(activeSection)) ? 0 : SPACING.SECTION
+      currentY = (isValidFigmaNode(activeSection) ? nY(activeSection) : currentY) + finalH + gap
     }
 
     // ---- STAGE 5: Off-frame safety audit (run BEFORE spacing alignment so expansions are accommodated) ----
