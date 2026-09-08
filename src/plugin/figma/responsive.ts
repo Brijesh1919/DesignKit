@@ -41,7 +41,6 @@ export interface ResponsiveNode {
   isText: boolean
   isImage: boolean
   isFixedHorizontal: boolean
-  isNavRow: boolean
   children: ResponsiveNode[]
 }
 
@@ -117,16 +116,6 @@ export function buildResponsiveTree(
       ? (layoutMode === 'HORIZONTAL' ? primaryAxisSizingMode === 'FIXED' : counterAxisSizingMode === 'FIXED')
       : true
 
-  // Detect likely navigation rows
-  const nameLower = (node.name || '').toLowerCase()
-  const isNavRow =
-    (layoutMode === 'HORIZONTAL' &&
-      (nameLower.includes('nav') ||
-        nameLower.includes('menu') ||
-        nameLower.includes('header') ||
-        nameLower.includes('links'))) ||
-    false
-
   const childNodes: ResponsiveNode[] = []
   if ('children' in node && (node as any).children) {
     for (const child of (node as ChildrenMixin).children) {
@@ -159,7 +148,6 @@ export function buildResponsiveTree(
     isText,
     isImage,
     isFixedHorizontal,
-    isNavRow,
     children: childNodes,
   }
 }
@@ -240,8 +228,13 @@ export function auditTreeForViewport(
       })
     }
 
-    // 4. Navigation Row Overflow (FAIL on mobile <= 480, WARNING on tablet <= 768)
-    if (node.isNavRow && vWidth <= 768 && node.width > vWidth * 0.85) {
+    // 4. Horizontal Auto Layout Row Overflow on Mobile (navigation / wide rows)
+    if (
+      node.layoutMode === 'HORIZONTAL' &&
+      vWidth <= 768 &&
+      node.width > vWidth * 0.85 &&
+      node.height <= 120 // Likely a nav or toolbar row
+    ) {
       issues.push({
         id: `${viewport.id}-nav-${node.id}`,
         nodeId: node.id,
@@ -251,8 +244,8 @@ export function auditTreeForViewport(
         viewportName: viewport.name,
         severity: vWidth <= 480 ? 'FAIL' : 'WARNING',
         category: 'navigation',
-        message: `Navigation bar (${node.width}px) is too wide for ${viewport.name} (${vWidth}px)`,
-        details: `Consider converting horizontal desktop navigation to a hamburger drawer or collapsible menu on ${viewport.name}.`,
+        message: `Horizontal row (${node.width}px) is too wide for ${viewport.name} (${vWidth}px)`,
+        details: `Consider collapsing horizontal navigation / toolbar into a compact mobile layout on ${viewport.name}.`,
         width: node.width,
         height: node.height,
       })
@@ -470,7 +463,8 @@ export function getResponsiveCssForSelection(
 
     // Mobile Overrides (@media max-width: 390px)
     const mobProps: string[] = []
-    if (node.isNavRow) {
+    if (node.layoutMode === 'HORIZONTAL' && node.height <= 120 && node.width > 350) {
+      // Structural: wide horizontal row on mobile → likely a nav/toolbar → collapse
       mobProps.push(`  flex-direction: column;`)
       mobProps.push(`  width: 100%;`)
     }
@@ -581,34 +575,47 @@ export function getResponsivePreview(
     issueCount++
   }
 
-  predicted.push(`Strategy: Node-by-node responsive reconstruction (zero proportional scaling)`)
+  predicted.push(`Strategy: Structure-aware responsive reflow — each container analysed independently`)
 
   if ('children' in target) {
     const children = (target as ChildrenMixin).children.filter(c => c.visible !== false)
+
+    // Detect navigation-like sections (horizontal, near top, short height)
+    const navCandidates = children.filter(c => {
+      const y = 'y' in c ? (c as any).y : 0
+      const h = c.height
+      return y < origH * 0.20 && h <= 120
+    })
+    if (navCandidates.length >= 1) {
+      predicted.push(`Navigation: compact mobile nav — brand preserved, links collapsed`)
+      issueCount++
+    }
+
+    // Detect repeated collections
+    const containers = children.filter(
+      c => c.type === 'FRAME' || c.type === 'GROUP' || c.type === 'COMPONENT' || c.type === 'INSTANCE'
+    )
+    if (containers.length >= 3) {
+      predicted.push(`Repeated collections: structurally similar items may reflow to 2-column grid`)
+      issueCount++
+    }
+
+    // Detect Auto Layout frames
+    const alFrames = children.filter(c => 'layoutMode' in c && (c as any).layoutMode !== 'NONE')
+    if (alFrames.length > 0) {
+      predicted.push(`Auto Layout: ${alFrames.length} AL frame(s) detected — direction preserved or adapted`)
+      issueCount++
+    }
+
     if (children.length > 0) {
-      const topKids = children.filter(c => ('y' in c ? (c as any).y : 0) < origH * 0.15)
-      if (topKids.length >= 2 || (topKids.length === 1 && 'children' in topKids[0])) {
-        predicted.push(`Navbar: Logo positioned left, nav links collapsed into mobile menu`)
-        issueCount++
-      }
-
-      const leftKids = children.filter(c => ('x' in c ? (c as any).x : 0) < origW * 0.48)
-      const rightKids = children.filter(c => ('x' in c ? (c as any).x : 0) >= origW * 0.48)
-      if (leftKids.length >= 1 && rightKids.length >= 1) {
-        predicted.push(`Hero / Split: Text placed first, image/media stacked below`)
-        issueCount++
-      }
-
-      if (children.length >= 3) {
-        predicted.push(`Card Grid: 3+ column layout reflowed to ${vp.cardCols} column stack (${vw - vp.padding * 2}px width)`)
-        issueCount++
-      }
+      predicted.push(`${children.length} top-level sections will each receive an independent layout strategy`)
+      issueCount++
     }
   }
 
-  predicted.push(`Typography: Display headers & copy adapted via responsive type scale`)
-  predicted.push(`Dynamic Flow: Text wrapped to drive section heights without clipping`)
-  predicted.push(`Layout Clamping: All elements padded to ${vp.padding}px mobile margins`)
+  predicted.push(`Typography: responsive font scale applied to all text nodes`)
+  predicted.push(`Dynamic flow: text wraps to drive section heights — no clipping`)
+  predicted.push(`Layout clamping: all elements constrained to ${vp.padding}px mobile margins`)
   issueCount += 3
 
   return {
