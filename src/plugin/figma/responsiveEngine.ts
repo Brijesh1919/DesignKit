@@ -146,6 +146,111 @@ function isBackgroundNode(n: SceneNode, containerW: number, containerH: number):
   return false
 }
 
+interface CornerRadii {
+  tl: number
+  tr: number
+  bl: number
+  br: number
+}
+
+function extractNodeCornerRadii(n: any): CornerRadii | null {
+  if (!n) return null
+  if ('topLeftRadius' in n && typeof n.topLeftRadius === 'number') {
+    const tl = n.topLeftRadius || 0
+    const tr = n.topRightRadius || 0
+    const bl = n.bottomLeftRadius || 0
+    const br = n.bottomRightRadius || 0
+    if (tl > 0 || tr > 0 || bl > 0 || br > 0) {
+      return { tl, tr, bl, br }
+    }
+  }
+  if ('cornerRadius' in n && typeof n.cornerRadius === 'number' && n.cornerRadius > 0) {
+    const r = n.cornerRadius
+    return { tl: r, tr: r, bl: r, br: r }
+  }
+  return null
+}
+
+/**
+ * Preserves corner radius and card clipping on any card-like container.
+ * Supports both uniform cornerRadius and individual corner radii (topLeftRadius, etc.).
+ * 1. Ensures the card frame itself retains the corner radius and sets clipsContent = true.
+ * 2. Ensures any background rectangle inside the card has matching dimensions and corner radius.
+ */
+function preserveCardCornerRadius(card: SceneNode, targetW: number, targetH: number): void {
+  if (!isValidFigmaNode(card)) return
+
+  // If card is a leaf (e.g. single RectangleNode or Component instance without children)
+  if (!('children' in card)) {
+    const leafRadii = extractNodeCornerRadii(card)
+    if (leafRadii) {
+      try {
+        if ('topLeftRadius' in card) {
+          (card as any).topLeftRadius = leafRadii.tl
+          (card as any).topRightRadius = leafRadii.tr
+          (card as any).bottomLeftRadius = leafRadii.bl
+          (card as any).bottomRightRadius = leafRadii.br
+        } else if ('cornerRadius' in card) {
+          (card as any).cornerRadius = leafRadii.tl
+        }
+      } catch (_) {}
+    }
+    return
+  }
+
+  const fr = card as FrameNode
+  let bestRadii: CornerRadii | null = extractNodeCornerRadii(fr)
+
+  // Check children for background rectangle or card surface that holds corner radius
+  for (const c of fr.children) {
+    const cRadii = extractNodeCornerRadii(c)
+    if (cRadii) {
+      if (
+        !bestRadii ||
+        Math.max(cRadii.tl, cRadii.tr, cRadii.bl, cRadii.br) >
+          Math.max(bestRadii.tl, bestRadii.tr, bestRadii.bl, bestRadii.br)
+      ) {
+        bestRadii = cRadii
+      }
+    }
+  }
+
+  if (bestRadii) {
+    try {
+      if ('topLeftRadius' in fr) {
+        fr.topLeftRadius = bestRadii.tl
+        fr.topRightRadius = bestRadii.tr
+        fr.bottomLeftRadius = bestRadii.bl
+        fr.bottomRightRadius = bestRadii.br
+      } else if ('cornerRadius' in fr) {
+        fr.cornerRadius = bestRadii.tl
+      }
+      fr.clipsContent = true
+    } catch (_) {}
+
+    // Synchronize onto background rectangles or card surfaces
+    for (const c of fr.children) {
+      const isCardBg =
+        isBackgroundNode(c, fr.width, fr.height) ||
+        (c.type === 'RECTANGLE' && nX(c) <= 8 && nY(c) <= 8 && c.width >= targetW * 0.50)
+      if (isCardBg) {
+        try {
+          if ('topLeftRadius' in c) {
+            (c as any).topLeftRadius = bestRadii.tl
+            (c as any).topRightRadius = bestRadii.tr
+            (c as any).bottomLeftRadius = bestRadii.bl
+            (c as any).bottomRightRadius = bestRadii.br
+          } else if ('cornerRadius' in c) {
+            (c as any).cornerRadius = bestRadii.tl
+          }
+          setPos(c, 0, 0)
+          doResize(c, targetW, targetH)
+        } catch (_) {}
+      }
+    }
+  }
+}
+
 function hasVisibleFillOrStroke(n: SceneNode): boolean {
   if ('fills' in n && Array.isArray((n as any).fills) && (n as any).fills.length > 0) {
     const hasFill = (n as any).fills.some((f: any) => f.visible !== false)
@@ -235,7 +340,7 @@ function detectAlignmentIntent(
     return kCenter - parentCenter
   })
   const avgOffset = centerOffsets.reduce((s, v) => s + v, 0) / kids.length
-  const tolerance = parentW * 0.15
+  const tolerance = parentW * 0.18
 
   if (Math.abs(avgOffset) <= tolerance) return 'CENTER'
   if (avgOffset > tolerance) return 'RIGHT'
@@ -279,14 +384,15 @@ function getChildAlignment(
   if (containerAlignment === 'CENTER') return 'CENTER'
 
   // If text node was explicitly centered on desktop
-  if (kid.type === 'TEXT' && (kid as TextNode).textAlignHorizontal === 'CENTER') {
-    return 'CENTER'
+  if (kid.type === 'TEXT') {
+    const txt = kid as TextNode
+    if (txt.textAlignHorizontal === 'CENTER') return 'CENTER'
   }
 
-  // If child visual center was within 12% of parent center on desktop
+  // If child visual center was within 18% of parent center on desktop
   const parentCenter = parentW / 2
   const childCenter = nX(kid) + kid.width / 2
-  if (Math.abs(childCenter - parentCenter) <= parentW * 0.12) {
+  if (Math.abs(childCenter - parentCenter) <= parentW * 0.18) {
     return 'CENTER'
   }
 
@@ -307,6 +413,11 @@ async function reflowTextNode(
   try {
     if (typeof node.fontName !== 'symbol') {
       await loadFontSafe(node.fontName as FontName)
+    } else {
+      try {
+        const rangeFont = node.getRangeFontName(0, 1) as FontName
+        if (rangeFont) await loadFontSafe(rangeFont)
+      } catch (_) {}
     }
 
     if (typeof node.fontSize === 'number') {
@@ -564,7 +675,9 @@ interface NavElements {
  */
 function isAnnouncementBar(node: SceneNode): boolean {
   const name = (node.name || '').toLowerCase()
-  if (/(announce|promo|banner|notice|alert|top-bar|topbar)/i.test(name)) return true
+  if (/(announce|promo|banner|notice|alert)/i.test(name) && !/(nav|header|topbar|top-bar)/i.test(name)) {
+    return true
+  }
   if (node.height <= 48 && 'children' in node) {
     const kids = visibleChildren(node).filter(k => !isBackgroundNode(k, node.width, node.height))
     const hasBrand = kids.some(k => isLikelyBrandElement(k))
@@ -580,30 +693,54 @@ function detectNavigationStructure(
 ): boolean {
   if (!('children' in node)) return false
   if (isAnnouncementBar(node)) return false
-  const kids = visibleChildren(node)
-  if (kids.length < 2) return false
 
+  const name = (node.name || '').toLowerCase()
+  const isNamedNav = /(nav|header|navbar|top-bar|topbar|appbar|menu-bar|site-header|masthead|navigation)/i.test(name)
   const relY = nY(node) / Math.max(1, parentH)
-  const alMode = detectAutoLayout(node)
 
-  // Must be near the top of the page (top 20%)
-  if (relY > 0.20) return false
+  // Must be located near the top of the canvas (top 35% of page height or Y <= 320)
+  if (relY > 0.35 && nY(node) > 320) return false
+
+  // Unwrap single-child / content wrappers (e.g. Header -> InnerContainer -> [Logo, Links, Button])
+  // even if background rectangle/fill exists at this level
+  let container: SceneNode = node
+  let kids = visibleChildren(container)
+  while ('children' in container) {
+    const nonBgKids = visibleChildren(container).filter(
+      c => !isBackgroundNode(c, container.width, container.height)
+    )
+    if (nonBgKids.length === 1 && 'children' in nonBgKids[0]) {
+      container = nonBgKids[0]
+      kids = visibleChildren(container)
+    } else {
+      kids = visibleChildren(container)
+      break
+    }
+  }
+
+  // Must have a nav-like height: compact row, not an entire long content section
+  const isShort = node.height <= 260
+  const isThinSlice = node.height / Math.max(1, parentH) <= 0.25
+  if (!isShort && !isThinSlice && !isNamedNav) return false
+
+  // If explicitly named nav/header and near top with valid height, accept!
+  if (isNamedNav && (isShort || isThinSlice)) {
+    return true
+  }
+
+  const alMode = detectAutoLayout(container)
 
   // Must be horizontal or have horizontally-arranged children
-  const isHorizontal = alMode === 'HORIZONTAL' ||
-    (alMode === 'NONE' && isHorizontallyArranged(kids, node.width))
+  const isHorizontal =
+    alMode === 'HORIZONTAL' ||
+    (alMode === 'NONE' && isHorizontallyArranged(kids, container.width)) ||
+    (alMode === 'VERTICAL' &&
+      kids.some(k => 'children' in k && isHorizontallyArranged(visibleChildren(k), container.width)))
 
   if (!isHorizontal) return false
 
-  // Must have a nav-like height: compact row, not a content section.
-  // Raised from 120 → 160 to handle taller desktop navbars.
-  // Also allow taller if the node is a very thin vertical slice of the page (< 12% of page height).
-  const isShort = node.height <= 160
-  const isThinSlice = node.height / Math.max(1, parentH) < 0.12
-  if (!isShort && !isThinSlice) return false
-
   // Must NOT be a repeated collection of similar items (that's a horizontal card row, not a nav)
-  const fgKids = kids.filter(k => !isBackgroundNode(k, node.width, node.height))
+  const fgKids = kids.filter(k => !isBackgroundNode(k, container.width, container.height))
   if (detectRepeatedCollection(fgKids)) return false
 
   return true
@@ -711,7 +848,7 @@ function isNavItemCandidate(n: SceneNode): boolean {
   if (n.type === 'TEXT') return true
 
   if ('children' in n) {
-    if (n.height > 80 || n.width > 320) return false
+    if (n.height > 96 || n.width > 420) return false
     const name = (n.name || '').toLowerCase()
     if (
       name.includes('nav') ||
@@ -892,10 +1029,29 @@ function extractNavElements(node: SceneNode, containerW: number, containerH: num
   const remaining: SceneNode[] = []
 
   for (const k of kids) {
-    if (isBackgroundNode(k, containerW, containerH)) {
+    if (
+      isBackgroundNode(k, containerW, containerH) ||
+      (k.type === 'RECTANGLE' && k.width >= node.width * 0.70 && k.height >= node.height * 0.50)
+    ) {
       bgNodes.push(k)
     } else {
       remaining.push(k)
+    }
+  }
+
+  // If remaining has a single container child holding the real content (e.g. Header -> InnerContainer)
+  while (remaining.length === 1 && 'children' in remaining[0] && !isLikelyBrandElement(remaining[0])) {
+    const innerKids = visibleChildren(remaining[0])
+    const innerNonBg = innerKids.filter(
+      k => !isBackgroundNode(k, (remaining[0] as any).width, (remaining[0] as any).height)
+    )
+    if (innerNonBg.length > 1) {
+      remaining.splice(0, 1, ...innerNonBg)
+      break
+    } else if (innerNonBg.length === 1 && 'children' in innerNonBg[0]) {
+      remaining.splice(0, 1, innerNonBg[0])
+    } else {
+      break
     }
   }
 
@@ -903,8 +1059,13 @@ function extractNavElements(node: SceneNode, containerW: number, containerH: num
     return { brandCandidates: [], navLinkCandidates: [], actionCandidates: [], bgNodes }
   }
 
-  // Sort by X position
-  remaining.sort((a, b) => nX(a) - nX(b))
+  // Sort by Y position for vertical sidebars/menus, by X position for horizontal bars
+  const isVertical = node.height > node.width || ('layoutMode' in node && (node as FrameNode).layoutMode === 'VERTICAL')
+  if (isVertical) {
+    remaining.sort((a, b) => nY(a) - nY(b))
+  } else {
+    remaining.sort((a, b) => nX(a) - nX(b))
+  }
 
   const brandCandidates: SceneNode[] = []
   const navLinkCandidates: SceneNode[] = []
@@ -1024,24 +1185,60 @@ function detectSidebarLayout(
   parentW: number,
   parentH: number
 ): SidebarDetectionResult {
-  // Look for a child that occupies a narrow vertical strip
+  // Check direct top-level children
   for (const kid of topLevelKids) {
+    if (!isValidFigmaNode(kid)) continue
     const kidX = nX(kid)
     const kidW = kid.width
     const kidH = kid.height
+    const name = (kid.name || '').toLowerCase()
 
-    const isNarrow = kidW < parentW * 0.35
-    const isTall = kidH >= parentH * 0.50
-    const isLeftEdge = kidX < parentW * 0.15
-    const isRightEdge = kidX > parentW * 0.65
+    const isNamedSidebar =
+      /(sidebar|side-nav|sidenav|side_nav|side\s*nav|side-menu|sidemenu|side\s*menu|dashboard-nav|dashboard\s*nav|left-nav|left\s*nav|left-menu|left\s*menu|vertical-nav|vertical\s*nav|drawer|aside)/i.test(name) ||
+      (/(nav|navigation|menu)/i.test(name) && kidH > kidW * 1.4)
 
-    if (isNarrow && isTall && (isLeftEdge || isRightEdge)) {
-      // Confirm it has multiple stacked children (vertical nav pattern)
+    const isNarrow = kidW <= parentW * 0.42
+    const isTall = kidH >= 200
+    const isLeftEdge = kidX <= parentW * 0.30
+    const isRightEdge = kidX >= parentW * 0.58
+
+    if ((isNamedSidebar && isNarrow) || (isNarrow && isTall && (isLeftEdge || isRightEdge))) {
       if ('children' in kid) {
-        const subKids = visibleChildren(kid)
-        if (subKids.length >= 3 && !isHorizontallyArranged(subKids, kidW)) {
+        const subKids = visibleChildren(kid).filter(c => !isBackgroundNode(c, kid.width, kid.height))
+        if (subKids.length >= 1) {
           const mainContent = topLevelKids.filter(k => k !== kid)
           return { hasSidebar: true, sidebarNode: kid, mainContentNodes: mainContent }
+        }
+      }
+    }
+  }
+
+  // Also check if a single top-level wrapper contains the sidebar (e.g. AppFrame -> [Sidebar, Content])
+  if (topLevelKids.length === 1 && 'children' in topLevelKids[0]) {
+    const wrapper = topLevelKids[0] as FrameNode
+    const innerKids = visibleChildren(wrapper).filter(k => !isBackgroundNode(k, wrapper.width, wrapper.height))
+    for (const kid of innerKids) {
+      const kidX = nX(kid)
+      const kidW = kid.width
+      const kidH = kid.height
+      const name = (kid.name || '').toLowerCase()
+
+      const isNamedSidebar =
+        /(sidebar|side-nav|sidenav|side_nav|side\s*nav|side-menu|sidemenu|side\s*menu|dashboard-nav|dashboard\s*nav|left-nav|left\s*nav|left-menu|left\s*menu|vertical-nav|vertical\s*nav|drawer|aside)/i.test(name) ||
+        (/(nav|navigation|menu)/i.test(name) && kidH > kidW * 1.4)
+
+      const isNarrow = kidW <= wrapper.width * 0.42
+      const isTall = kidH >= 200
+      const isLeftEdge = kidX <= wrapper.width * 0.30
+      const isRightEdge = kidX >= wrapper.width * 0.58
+
+      if ((isNamedSidebar && isNarrow) || (isNarrow && isTall && (isLeftEdge || isRightEdge))) {
+        if ('children' in kid) {
+          const subKids = visibleChildren(kid).filter(c => !isBackgroundNode(c, kid.width, kid.height))
+          if (subKids.length >= 1) {
+            const mainContent = innerKids.filter(k => k !== kid)
+            return { hasSidebar: true, sidebarNode: kid, mainContentNodes: mainContent }
+          }
         }
       }
     }
@@ -1132,6 +1329,10 @@ async function transformAutoLayoutVertical(
   node.paddingTop = Math.round(Math.min(node.paddingTop, vp.padding * 2))
   node.paddingBottom = Math.round(Math.min(node.paddingBottom, vp.padding * 2))
 
+  if (node.itemSpacing && node.itemSpacing > SPACING.NORMAL) {
+    node.itemSpacing = SPACING.NORMAL
+  }
+
   // Resize to mobile width
   if (node.primaryAxisSizingMode === 'FIXED') {
     doResize(node, targetW, node.height)
@@ -1142,26 +1343,48 @@ async function transformAutoLayoutVertical(
 
   // Adapt horizontal sizing
   if (node.counterAxisSizingMode === 'AUTO') {
-    // HUG width — let it shrink to content
     doResize(node, targetW, node.height)
   }
+
+  const innerW = Math.max(1, targetW - node.paddingLeft - node.paddingRight)
 
   // Recurse into children that have Auto Layout or complex structure
   for (const child of node.children) {
     if (child.visible === false) continue
     if ('layoutMode' in child) {
-      await reflowNode(child, vp, targetW - node.paddingLeft - node.paddingRight, log)
+      doResize(child, innerW, child.height)
+      await reflowNode(child, vp, innerW, log)
     } else if (child.type === 'TEXT') {
-      const innerW = targetW - node.paddingLeft - node.paddingRight
-      await reflowTextNode(child as TextNode, Math.max(1, innerW), vp, log)
+      await reflowTextNode(child as TextNode, innerW, vp, log)
+    } else if (isImageNode(child)) {
+      const aspect = child.height / Math.max(1, child.width)
+      const imgW = innerW
+      const imgH = Math.round(imgW * aspect)
+      doResize(child, imgW, imgH)
     } else if ('children' in child) {
-      const innerW = targetW - node.paddingLeft - node.paddingRight
-      await reflowNode(child, vp, Math.max(1, innerW), log)
+      doResize(child, innerW, child.height)
+      await reflowNode(child, vp, innerW, log)
+    } else {
+      if (child.width > innerW) {
+        doResize(child, innerW, child.height)
+      }
     }
+    preserveCardCornerRadius(child, innerW, child.height)
   }
 
-  log.push(`"${node.name}" [AUTO_LAYOUT_VERTICAL]: preserved, width ${targetW}px`)
-  return node.height
+  try {
+    node.primaryAxisSizingMode = 'AUTO'
+  } catch (_) {}
+
+  const kids = node.children.filter(c => c.visible !== false)
+  const totalChildH = kids.reduce((s, c) => s + c.height, 0) + Math.max(0, kids.length - 1) * (node.itemSpacing || 0)
+  const expectedH = totalChildH + (node.paddingTop || 0) + (node.paddingBottom || 0)
+  const finalH = Math.max(node.height, expectedH)
+  doResize(node, targetW, finalH)
+  preserveCardCornerRadius(node, targetW, finalH)
+
+  log.push(`"${node.name}" [AUTO_LAYOUT_VERTICAL]: preserved, width ${targetW}px, height ${finalH}px`)
+  return finalH
 }
 
 // ============================================================
@@ -1197,28 +1420,42 @@ async function transformAutoLayoutHorizontal(
   if (totalChildW > availW && vp.width < 768) {
     // Children won't fit horizontally → switch to vertical
     node.layoutMode = 'VERTICAL'
-    if (!node.itemSpacing || node.itemSpacing > 40) node.itemSpacing = SPACING.NORMAL
+    if (!node.itemSpacing || node.itemSpacing > SPACING.NORMAL) {
+      node.itemSpacing = SPACING.NORMAL
+    }
 
     // Resize children to fill width
     for (const child of kids) {
-      if ('layoutSizingHorizontal' in child && (child as any).layoutSizingHorizontal === 'FILL') {
-        // Keep FILL — Auto Layout handles it
-      } else {
-        doResize(child, newAvailW, child.height)
-      }
+      doResize(child, newAvailW, child.height)
+      try { (child as any).layoutAlign = 'STRETCH' } catch (_) {}
+      try { (child as any).layoutSizingHorizontal = 'FILL' } catch (_) {}
+
       if (child.type === 'TEXT') {
         await reflowTextNode(child as TextNode, newAvailW, vp, log)
+      } else if (isImageNode(child)) {
+        const aspect = child.height / Math.max(1, child.width)
+        const imgH = Math.round(newAvailW * aspect)
+        doResize(child, newAvailW, imgH)
       } else if ('children' in child) {
         await reflowNode(child, vp, newAvailW, log)
       }
+      preserveCardCornerRadius(child, newAvailW, child.height)
     }
 
-    doResize(node, targetW, node.height)
-    log.push(`"${node.name}" [AUTO_LAYOUT_HORIZONTAL→VERTICAL]: flipped due to overflow`)
+    try {
+      node.primaryAxisSizingMode = 'AUTO'
+    } catch (_) {}
+
+    const totalChildH = kids.reduce((s, c) => s + c.height, 0) + Math.max(0, kids.length - 1) * (node.itemSpacing || 0)
+    const expectedH = totalChildH + (node.paddingTop || 0) + (node.paddingBottom || 0)
+    const finalH = Math.max(node.height, expectedH)
+    doResize(node, targetW, finalH)
+    preserveCardCornerRadius(node, targetW, finalH)
+
+    log.push(`"${node.name}" [AUTO_LAYOUT_HORIZONTAL→VERTICAL]: flipped due to overflow (${finalH}px)`)
+    return finalH
   } else {
     // Children fit — preserve HORIZONTAL, just resize node
-    doResize(node, targetW, node.height)
-
     // Scale children that have FILL sizing
     for (const child of kids) {
       if (child.type === 'TEXT') {
@@ -1226,12 +1463,18 @@ async function transformAutoLayoutHorizontal(
       } else if ('children' in child) {
         await reflowNode(child, vp, child.width, log)
       }
+      preserveCardCornerRadius(child, child.width, child.height)
     }
 
-    log.push(`"${node.name}" [AUTO_LAYOUT_HORIZONTAL]: preserved (children fit)`)
-  }
+    const maxChildH = Math.max(...kids.map(c => c.height), 1)
+    const expectedH = maxChildH + (node.paddingTop || 0) + (node.paddingBottom || 0)
+    const finalH = Math.max(node.height, expectedH)
+    doResize(node, targetW, finalH)
+    preserveCardCornerRadius(node, targetW, finalH)
 
-  return node.height
+    log.push(`"${node.name}" [AUTO_LAYOUT_HORIZONTAL]: preserved (children fit)`)
+    return finalH
+  }
 }
 
 // ============================================================
@@ -1876,16 +2119,19 @@ async function transformRepeatedCollection(
 
     const maxRowH = Math.max(...rowHeights, 1)
 
-    // Equalize row heights
+    // Equalize row heights and preserve card corner radius
     for (let col = 0; col < rowItems.length; col++) {
-      doResize(rowItems[col], itemW, maxRowH)
+      const card = rowItems[col]
+      doResize(card, itemW, maxRowH)
+      preserveCardCornerRadius(card, itemW, maxRowH)
     }
 
-    localY += maxRowH + vp.colGap
+    localY += maxRowH + (cols === 1 ? SPACING.NORMAL : vp.colGap)
   }
 
   const finalH = localY + vp.padding
   doResize(fr, vp.width, finalH)
+  preserveCardCornerRadius(fr, vp.width, finalH)
 
   for (const bg of bgNodes) {
     setPos(bg, 0, 0)
@@ -1975,14 +2221,14 @@ async function transformSidebarLayout(
   vp: RVP,
   log: string[]
 ): Promise<number> {
-  // Route sidebar through the navigation transformer.
-  // This guarantees ONE hamburger, ONE menu panel, and the correct compact height.
+  // Route sidebar through the navigation transformer to create mobile nav with single list button
   const { height: navH, activeNode: activeNav } = await transformNavigationNode(sidebarNode, vp, log)
 
-  // Position the active nav at top
   if (isValidFigmaNode(activeNav)) {
     setPos(activeNav, 0, 0)
   }
+
+  const allSections: SceneNode[] = isValidFigmaNode(activeNav) ? [activeNav] : []
 
   // Stack main content nodes below the compact nav
   let localY = navH + SPACING.SECTION
@@ -1991,13 +2237,26 @@ async function transformSidebarLayout(
     setPos(main, 0, localY)
     doResize(main, vp.width, main.height)
     const h = await reflowNode(main, vp, vp.width, log)
-    localY += h + SPACING.SECTION
+    const actualH = Math.max(h, main.height)
+    doResize(main, vp.width, actualH)
+    preserveCardCornerRadius(main, vp.width, actualH)
+    localY += actualH + SPACING.SECTION
+    allSections.push(main)
   }
 
-  const finalH = localY + vp.padding
-  doResize(parentFrame, vp.width, finalH)
+  // Safety audits, overlap correction, and viewport clamping on parent frame
+  auditAndFixOffFrameContent(parentFrame, log)
+  verifyAndCorrectSectionOverlaps(allSections.filter(s => isValidFigmaNode(s) && s.visible !== false), log)
 
-  log.push(`"${parentFrame.name}" [SIDEBAR_LAYOUT]: sidebar → mobile nav (H=${navH}px), ${mainNodes.length} sections stacked below`)
+  const finalTop = parentFrame.children.filter(c => c.visible !== false).sort((a, b) => nY(a) - nY(b))
+  const lastSec = finalTop[finalTop.length - 1]
+  const finalH = lastSec ? nY(lastSec) + lastSec.height : localY
+
+  parentFrame.resize(vp.width, finalH)
+  parentFrame.clipsContent = true
+  validateAndClampLayout(parentFrame, vp, log)
+
+  log.push(`"${parentFrame.name}" [SIDEBAR_LAYOUT]: sidebar → mobile nav with list button (H=${navH}px), ${mainNodes.length} sections stacked below`)
   return finalH
 }
 
@@ -2019,14 +2278,16 @@ async function transformSidebarLayout(
 async function transformHorizontalGroup(
   node: SceneNode,
   vp: RVP,
-  log: string[]
+  log: string[],
+  parentW?: number
 ): Promise<number> {
   if (!('children' in node)) return node.height
 
   const fr = node as FrameNode
   if ('layoutMode' in fr && fr.layoutMode !== 'NONE') fr.layoutMode = 'NONE'
 
-  const contentW = vp.width - vp.padding * 2
+  const containerW = parentW ? Math.min(parentW, vp.width) : vp.width
+  const contentW = Math.max(10, containerW - vp.padding * 2)
   const allKids = visibleChildren(node)
   const bgNodes = allKids.filter(k => isBackgroundNode(k, fr.width, fr.height))
   const fgKids = allKids.filter(k => !isBackgroundNode(k, fr.width, fr.height))
@@ -2062,17 +2323,21 @@ async function transformHorizontalGroup(
     }
 
     const maxRowH = Math.max(...rowHeights, 1)
-    for (const item of rowItems) doResize(item, itemW, maxRowH)
+    for (const item of rowItems) {
+      doResize(item, itemW, maxRowH)
+      preserveCardCornerRadius(item, itemW, maxRowH)
+    }
 
-    localY += maxRowH + vp.colGap
+    localY += maxRowH + (cols === 1 ? SPACING.NORMAL : vp.colGap)
   }
 
   const finalH = localY + vp.padding
-  doResize(fr, vp.width, finalH)
+  doResize(fr, containerW, finalH)
+  preserveCardCornerRadius(fr, containerW, finalH)
 
   for (const bg of bgNodes) {
     setPos(bg, 0, 0)
-    doResize(bg, vp.width, finalH)
+    doResize(bg, containerW, finalH)
   }
 
   log.push(`"${node.name}" [HORIZONTAL_GROUP]: ${fgKids.length} items → ${cols}-col (repeated=${isRepeated}) (${finalH}px)`)
@@ -2100,15 +2365,18 @@ async function transformSingleColumn(
   node: SceneNode,
   vp: RVP,
   log: string[],
-  isNestedChild = false  // true when called from reflowNode as a child element
+  isNestedChild = false,  // true when called from reflowNode as a child element
+  parentW?: number
 ): Promise<number> {
   // contentW = full usable width at this level
   // For a top-level section: containerW - 2*padding
   // For a nested child: the parentW already passed in IS the content width
-  const containerW = isNestedChild ? (node.width || vp.width) : vp.width
+  const containerW = parentW
+    ? Math.min(parentW, vp.width)
+    : isNestedChild ? Math.min(node.width || vp.width, vp.width) : vp.width
   const ownPaddingL = isNestedChild ? 0 : vp.padding
   const ownPaddingR = isNestedChild ? 0 : vp.padding
-  const contentW = containerW - ownPaddingL - ownPaddingR
+  const contentW = Math.max(10, containerW - ownPaddingL - ownPaddingR)
   const baseX = ownPaddingL
 
   if (!('children' in node)) {
@@ -2154,19 +2422,26 @@ async function transformSingleColumn(
     if (kid.type === 'TEXT') {
       const textNode = kid as TextNode
       const textW = contentW
+      const origAlign = textNode.textAlignHorizontal
       const h = await reflowTextNode(textNode, textW, vp, log)
 
-      if (kidAlign === 'CENTER') {
+      if (kidAlign === 'CENTER' || origAlign === 'CENTER') {
         try {
           if (typeof textNode.fontName !== 'symbol') {
             await loadFontSafe(textNode.fontName as FontName)
+          } else {
+            const rangeFont = textNode.getRangeFontName(0, 1) as FontName
+            if (rangeFont) await loadFontSafe(rangeFont)
           }
           textNode.textAlignHorizontal = 'CENTER'
         } catch (_) {}
-      } else if (kidAlign === 'RIGHT') {
+      } else if (kidAlign === 'RIGHT' || origAlign === 'RIGHT') {
         try {
           if (typeof textNode.fontName !== 'symbol') {
             await loadFontSafe(textNode.fontName as FontName)
+          } else {
+            const rangeFont = textNode.getRangeFontName(0, 1) as FontName
+            if (rangeFont) await loadFontSafe(rangeFont)
           }
           textNode.textAlignHorizontal = 'RIGHT'
         } catch (_) {}
@@ -2175,15 +2450,15 @@ async function transformSingleColumn(
           if (typeof textNode.fontName !== 'symbol') {
             await loadFontSafe(textNode.fontName as FontName)
           }
-          textNode.textAlignHorizontal = 'LEFT'
+          textNode.textAlignHorizontal = origAlign === 'JUSTIFIED' ? 'JUSTIFIED' : 'LEFT'
         } catch (_) {}
       }
 
       setPos(textNode, baseX, localY)
-      localY += h + SPACING.NORMAL
+      localY += Math.max(h, textNode.height) + SPACING.NORMAL
 
     } else if (isButtonLike(kid)) {
-      const btnW = Math.min(kid.width, contentW)
+      const btnW = Math.min(Math.max(kid.width, 160), contentW)
       const btnH = Math.min(Math.max(kid.height, 40), 52)
       doResize(kid, btnW, btnH)
 
@@ -2204,6 +2479,7 @@ async function transformSingleColumn(
         }
       }
 
+      preserveCardCornerRadius(kid, btnW, btnH)
       const x = alignedX(btnW, contentW, baseX, kidAlign)
       setPos(kid, x, localY)
       localY += btnH + SPACING.NORMAL
@@ -2211,13 +2487,16 @@ async function transformSingleColumn(
     } else if (isImageNode(kid)) {
       const origW = kid.width, origH = kid.height
       const aspect = origH / Math.max(1, origW)
-      const isFullWidthImg = origW >= fr.width * 0.75
-      const imgW = isFullWidthImg ? contentW : Math.min(origW, contentW)
-      const maxH = Math.round(vp.width * 0.80)
-      const imgH = Math.min(Math.round(imgW * aspect), maxH)
+      const isSubstantialImg = origW >= 140 || origW >= fr.width * 0.25 || origH >= 100
+      const imgW = isSubstantialImg ? contentW : Math.min(origW, contentW)
+      const maxH = Math.round(vp.width * 0.90)
+      const imgH = isSubstantialImg
+        ? Math.min(Math.round(imgW * aspect), maxH)
+        : Math.min(origH, maxH)
 
       doResize(kid, imgW, imgH)
-      const x = alignedX(imgW, contentW, baseX, kidAlign)
+      preserveCardCornerRadius(kid, imgW, imgH)
+      const x = isSubstantialImg ? baseX : alignedX(imgW, contentW, baseX, kidAlign)
       setPos(kid, x, localY)
       localY += imgH + SPACING.NORMAL
 
@@ -2227,37 +2506,42 @@ async function transformSingleColumn(
       localY += kid.height + SPACING.SMALL
 
     } else if ('children' in kid) {
-      const isCompactGroup = kid.width < contentW * 0.70 && kid.height <= 80
-      if (isCompactGroup) {
-        const groupW = Math.min(kid.width, contentW)
-        doResize(kid, groupW, kid.height)
-        const h = await reflowNode(kid, vp, groupW, log, true)
-        const x = alignedX(groupW, contentW, baseX, kidAlign)
-        setPos(kid, x, localY)
-        localY += h + SPACING.NORMAL
-      } else {
-        doResize(kid, contentW, kid.height)
-        const h = await reflowNode(kid, vp, contentW, log, true)
-        setPos(kid, baseX, localY)
-        localY += h + SPACING.NORMAL
-      }
+      // Small badge, chip, or tag (e.g. "NEW", "BETA")
+      const isSmallBadge = kid.height <= 36 && kid.width <= 140 && visibleChildren(kid).length <= 2
+      const targetCardW = isSmallBadge ? Math.min(kid.width, contentW) : contentW
+
+      doResize(kid, targetCardW, kid.height)
+      const h = await reflowNode(kid, vp, targetCardW, log, true)
+      const fgSubKids = visibleChildren(kid).filter(c => !isBackgroundNode(c, kid.width, kid.height))
+      const maxSubBottom = fgSubKids.length > 0 ? Math.max(...fgSubKids.map(c => nY(c) + c.height)) : 0
+      const actualH = Math.max(h, kid.height, maxSubBottom + 8)
+
+      doResize(kid, targetCardW, actualH)
+      preserveCardCornerRadius(kid, targetCardW, actualH)
+
+      const x = isSmallBadge ? alignedX(targetCardW, contentW, baseX, kidAlign) : baseX
+      setPos(kid, x, localY)
+      localY += actualH + SPACING.NORMAL
 
     } else {
-      const isDivider = kid.height <= 2 && kid.width >= fr.width * 0.70
+      const isDivider = kid.height <= 4 && kid.width >= fr.width * 0.50
       const w = isDivider ? contentW : Math.min(kid.width, contentW)
       doResize(kid, w, kid.height)
-      const x = alignedX(w, contentW, baseX, kidAlign)
+      const x = isDivider ? baseX : alignedX(w, contentW, baseX, kidAlign)
       setPos(kid, x, localY)
       localY += kid.height + SPACING.NORMAL
     }
   }
 
   const finalH = localY + (isNestedChild ? 0 : vp.padding)
-  doResize(fr, isNestedChild ? contentW : vp.width, finalH)
+  const finalContainerW = isNestedChild ? containerW : vp.width
+  doResize(fr, finalContainerW, finalH)
+  preserveCardCornerRadius(fr, finalContainerW, finalH)
 
   for (const bg of bgNodes) {
     setPos(bg, 0, 0)
-    doResize(bg, isNestedChild ? contentW : vp.width, finalH)
+    doResize(bg, finalContainerW, finalH)
+    preserveCardCornerRadius(bg, finalContainerW, finalH)
   }
 
   log.push(`"${node.name}" [SINGLE_COLUMN|${alignment}]: ${fgKids.length} items stacked (${finalH}px, nested=${isNestedChild})`)
@@ -2337,12 +2621,12 @@ async function reflowNode(
       return transformRepeatedCollection(node, vp, log)
 
     case 'HORIZONTAL_GROUP':
-      return transformHorizontalGroup(node, vp, log)
+      return transformHorizontalGroup(node, vp, log, parentW)
 
     case 'SINGLE_COLUMN':
     default:
       // Pass asChild=true when called recursively so double-padding is avoided
-      return transformSingleColumn(node, vp, log, asChild)
+      return transformSingleColumn(node, vp, log, asChild, parentW)
   }
 }
 
@@ -2612,11 +2896,11 @@ export async function applyResponsiveEngine(
           sectionH = await transformRepeatedCollection(section, vp, log)
           break
         case 'HORIZONTAL_GROUP':
-          sectionH = await transformHorizontalGroup(section, vp, log)
+          sectionH = await transformHorizontalGroup(section, vp, log, vp.width)
           break
         case 'SINGLE_COLUMN':
         default:
-          sectionH = await transformSingleColumn(section, vp, log)
+          sectionH = await transformSingleColumn(section, vp, log, false, vp.width)
           break
       }
 
@@ -2631,10 +2915,12 @@ export async function applyResponsiveEngine(
           if (fr.height < maxChildBottom + 8) {
             sectionH = maxChildBottom + 16
             doResize(fr, vp.width, sectionH)
+            preserveCardCornerRadius(fr, vp.width, sectionH)
             for (const bg of fr.children) {
               if (isBackgroundNode(bg, fr.width, fr.height)) {
                 setPos(bg, 0, 0)
                 doResize(bg, vp.width, sectionH)
+                preserveCardCornerRadius(bg, vp.width, sectionH)
               }
             }
           }
