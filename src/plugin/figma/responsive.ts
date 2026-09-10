@@ -118,11 +118,15 @@ export function buildResponsiveTree(
 
   const childNodes: ResponsiveNode[] = []
   if ('children' in node && (node as any).children) {
-    for (const child of (node as ChildrenMixin).children) {
-      if (child.visible !== false) {
-        childNodes.push(buildResponsiveTree(child, rootX, rootY, depth + 1))
+    try {
+      for (const child of (node as ChildrenMixin).children) {
+        try {
+          if ('removed' in child && (child as any).removed) continue
+          if ('visible' in child && child.visible === false) continue
+          childNodes.push(buildResponsiveTree(child, rootX, rootY, depth + 1))
+        } catch (_) {}
       }
-    }
+    } catch (_) {}
   }
 
   return {
@@ -551,7 +555,7 @@ import type {
   ResponsiveTransformSummary,
   ResponsiveTargetPreset,
 } from '../../shared/types'
-import { VIEWPORTS, applyResponsiveEngine } from './responsiveEngine'
+import { VIEWPORTS, applyResponsiveEngine, detectScreenArchetype, safeChildren } from './responsiveEngine'
 
 export function getResponsivePreview(
   selection: readonly SceneNode[],
@@ -570,6 +574,11 @@ export function getResponsivePreview(
   const predicted: string[] = []
   let issueCount = 0
 
+  if (target.type === 'FRAME') {
+    const archetype = detectScreenArchetype(target as FrameNode, origW, origH)
+    predicted.push(`Screen Archetype: ${archetype.replace(/_/g, ' ')}`)
+  }
+
   if (origW !== vw) {
     predicted.push(`Frame width: ${origW}px → ${vw}px (${vp.name} viewport)`)
     issueCount++
@@ -578,7 +587,7 @@ export function getResponsivePreview(
   predicted.push(`Strategy: Structure-aware responsive reflow — each container analysed independently`)
 
   if ('children' in target) {
-    const children = (target as ChildrenMixin).children.filter(c => c.visible !== false)
+    const children = safeChildren(target)
 
     // Detect navigation-like sections (horizontal, near top, short height)
     const navCandidates = children.filter(c => {

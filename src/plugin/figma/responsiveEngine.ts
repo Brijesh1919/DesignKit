@@ -98,28 +98,138 @@ export function getResponsiveFontSize(desktopPx: number, vp: RVP): number {
 // GEOMETRY & NODE HELPERS
 // ============================================================
 
-function isValidFigmaNode(node: BaseNode | null | undefined): boolean {
+/**
+ * Checks if a Figma node is currently valid, alive, and not destroyed/removed.
+ * Safely guards against Figma's "The node (instance sublayer or table cell) does not exist" error.
+ */
+export function isValidFigmaNode(node: BaseNode | null | undefined): boolean {
   if (!node) return false
   try {
-    return !!(node.id && figma.getNodeById(node.id))
+    if ('removed' in node && (node as any).removed) return false
+    if (!node.id) return false
+    // If the node handle was invalidated (e.g. destroyed instance sublayer or table cell),
+    // accessing any getter like .type will throw:
+    // "The node (instance sublayer or table cell) with id ... does not exist"
+    const t = (node as any).type
+    if (!t) return false
+    if (typeof figma !== 'undefined' && typeof figma.getNodeById === 'function' && !node.id.includes(';')) {
+      return !!figma.getNodeById(node.id)
+    }
+    return true
   } catch (_) {
     return false
   }
 }
 
+/**
+ * Checks if a node is valid, alive, and visible.
+ * Safely handles proxy nodes and instance sublayers.
+ */
+export function isNodeValidAndVisible(node: BaseNode | null | undefined): boolean {
+  if (!isValidFigmaNode(node)) return false
+  try {
+    if ('visible' in (node as any) && (node as any).visible === false) return false
+    return true
+  } catch (_) {
+    return false
+  }
+}
+
+/**
+ * Safely extracts visible children from a node, ignoring destroyed/stale proxy nodes and invisible items.
+ */
+export function safeChildren(node: SceneNode | BaseNode | null | undefined): SceneNode[] {
+  if (!isValidFigmaNode(node)) return []
+  if (!('children' in (node as any))) return []
+  try {
+    const raw = (node as ChildrenMixin).children
+    if (!raw || !Array.isArray(raw)) return []
+    const result: SceneNode[] = []
+    for (let i = 0; i < raw.length; i++) {
+      const kid = raw[i]
+      if (isNodeValidAndVisible(kid)) {
+        result.push(kid as SceneNode)
+      }
+    }
+    return result
+  } catch (_) {
+    return []
+  }
+}
+
+/**
+ * Safely extracts all alive children from a node (including hidden ones), ignoring destroyed/stale proxy nodes.
+ */
+export function safeAllChildren(node: SceneNode | BaseNode | null | undefined): SceneNode[] {
+  if (!isValidFigmaNode(node)) return []
+  if (!('children' in (node as any))) return []
+  try {
+    const raw = (node as ChildrenMixin).children
+    if (!raw || !Array.isArray(raw)) return []
+    const result: SceneNode[] = []
+    for (let i = 0; i < raw.length; i++) {
+      const kid = raw[i]
+      if (isValidFigmaNode(kid)) {
+        result.push(kid as SceneNode)
+      }
+    }
+    return result
+  } catch (_) {
+    return []
+  }
+}
+
 function nX(n: SceneNode): number {
   if (!isValidFigmaNode(n)) return 0
-  return 'x' in n ? (n as any).x as number : 0
+  try {
+    return 'x' in n ? ((n as any).x as number) : 0
+  } catch (_) {
+    return 0
+  }
 }
 function nY(n: SceneNode): number {
   if (!isValidFigmaNode(n)) return 0
-  return 'y' in n ? (n as any).y as number : 0
+  try {
+    return 'y' in n ? ((n as any).y as number) : 0
+  } catch (_) {
+    return 0
+  }
 }
 
 function setPos(n: SceneNode, x: number, y: number): void {
   if (!isValidFigmaNode(n)) return
-  if ('x' in n) (n as any).x = Math.round(x)
-  if ('y' in n) (n as any).y = Math.round(y)
+  try {
+    if ('x' in n) (n as any).x = Math.round(x)
+  } catch (_) {
+    try {
+      // If setting x fails because node or ancestor is in an instance, attempt detachment
+      let p: any = n
+      while (p && p.type !== 'PAGE' && p.type !== 'DOCUMENT') {
+        if (p.type === 'INSTANCE' && 'detachInstance' in p && typeof p.detachInstance === 'function') {
+          p.detachInstance()
+          break
+        }
+        p = p.parent
+      }
+      if ('x' in n) (n as any).x = Math.round(x)
+    } catch (_) {}
+  }
+
+  try {
+    if ('y' in n) (n as any).y = Math.round(y)
+  } catch (_) {
+    try {
+      let p: any = n
+      while (p && p.type !== 'PAGE' && p.type !== 'DOCUMENT') {
+        if (p.type === 'INSTANCE' && 'detachInstance' in p && typeof p.detachInstance === 'function') {
+          p.detachInstance()
+          break
+        }
+        p = p.parent
+      }
+      if ('y' in n) (n as any).y = Math.round(y)
+    } catch (_) {}
+  }
 }
 
 function doResize(n: SceneNode, w: number, h: number): void {
@@ -127,23 +237,73 @@ function doResize(n: SceneNode, w: number, h: number): void {
   if ('resize' in n && typeof (n as any).resize === 'function') {
     try {
       (n as any).resize(Math.max(1, Math.round(w)), Math.max(1, Math.round(h)))
-    } catch (_) {}
+    } catch (_) {
+      try {
+        let p: any = n
+        while (p && p.type !== 'PAGE' && p.type !== 'DOCUMENT') {
+          if (p.type === 'INSTANCE' && 'detachInstance' in p && typeof p.detachInstance === 'function') {
+            p.detachInstance()
+            break
+          }
+          p = p.parent
+        }
+        (n as any).resize(Math.max(1, Math.round(w)), Math.max(1, Math.round(h)))
+      } catch (_) {}
+    }
   }
 }
 
-export function isImageNode(n: SceneNode): boolean {
-  if ('fills' in n && Array.isArray((n as any).fills)) {
-    return (n as any).fills.some((f: any) => f.type === 'IMAGE' && f.visible !== false)
+/**
+ * Recursively detaches all component instances in a node tree.
+ * Converts InstanceNodes into regular mutable FrameNodes so that
+ * children's positions, sizes, Auto Layout modes, and hierarchies
+ * can be freely transformed without Figma "property cannot be overridden in an instance" errors.
+ */
+export function detachInstancesRecursively(node: SceneNode): SceneNode {
+  if (!isValidFigmaNode(node)) return node
+
+  let current = node
+  if (current.type === 'INSTANCE' && 'detachInstance' in current && typeof (current as any).detachInstance === 'function') {
+    try {
+      current = (current as any).detachInstance()
+    } catch (_) {}
   }
-  return false
+
+  try {
+    if ('children' in current) {
+      const kids = safeAllChildren(current)
+      for (const kid of kids) {
+        detachInstancesRecursively(kid)
+      }
+    }
+  } catch (_) {}
+
+  return current
+}
+
+export function isImageNode(n: SceneNode): boolean {
+  if (!isValidFigmaNode(n)) return false
+  try {
+    if ('fills' in n && Array.isArray((n as any).fills)) {
+      return (n as any).fills.some((f: any) => f && f.type === 'IMAGE' && f.visible !== false)
+    }
+    return false
+  } catch (_) {
+    return false
+  }
 }
 
 /** A node that acts as a full-bleed background (covers most of its container). */
 function isBackgroundNode(n: SceneNode, containerW: number, containerH: number): boolean {
-  if (n.type === 'RECTANGLE' || n.type === 'VECTOR') {
-    if (n.width >= containerW * 0.70 && n.height >= containerH * 0.50) return true
+  if (!isValidFigmaNode(n)) return false
+  try {
+    if (n.type === 'RECTANGLE' || n.type === 'VECTOR') {
+      if (n.width >= containerW * 0.70 && n.height >= containerH * 0.50) return true
+    }
+    return false
+  } catch (_) {
+    return false
   }
-  return false
 }
 
 interface CornerRadii {
@@ -201,8 +361,10 @@ function preserveCardCornerRadius(card: SceneNode, targetW: number, targetH: num
   const fr = card as FrameNode
   let bestRadii: CornerRadii | null = extractNodeCornerRadii(fr)
 
+  const allKids = safeAllChildren(fr)
+
   // Check children for background rectangle or card surface that holds corner radius
-  for (const c of fr.children) {
+  for (const c of allKids) {
     const cRadii = extractNodeCornerRadii(c)
     if (cRadii) {
       if (
@@ -229,7 +391,7 @@ function preserveCardCornerRadius(card: SceneNode, targetW: number, targetH: num
     } catch (_) {}
 
     // Synchronize onto background rectangles or card surfaces (never product images!)
-    for (const c of fr.children) {
+    for (const c of allKids) {
       if (isImageNode(c)) continue
 
       const isCardBg =
@@ -258,40 +420,55 @@ function preserveCardCornerRadius(card: SceneNode, targetW: number, targetH: num
 }
 
 function hasVisibleFillOrStroke(n: SceneNode): boolean {
-  if ('fills' in n && Array.isArray((n as any).fills) && (n as any).fills.length > 0) {
-    const hasFill = (n as any).fills.some((f: any) => f.visible !== false)
-    if (hasFill) return true
+  if (!isValidFigmaNode(n)) return false
+  try {
+    if ('fills' in n && Array.isArray((n as any).fills) && (n as any).fills.length > 0) {
+      const hasFill = (n as any).fills.some((f: any) => f && f.visible !== false)
+      if (hasFill) return true
+    }
+    if ('strokes' in n && Array.isArray((n as any).strokes) && (n as any).strokes.length > 0) {
+      const hasStroke = (n as any).strokes.some((s: any) => s && s.visible !== false)
+      if (hasStroke) return true
+    }
+    return false
+  } catch (_) {
+    return false
   }
-  if ('strokes' in n && Array.isArray((n as any).strokes) && (n as any).strokes.length > 0) {
-    const hasStroke = (n as any).strokes.some((s: any) => s.visible !== false)
-    if (hasStroke) return true
-  }
-  return false
 }
 
 function isButtonLike(n: SceneNode): boolean {
-  if ((n.type === 'FRAME' || n.type === 'COMPONENT' || n.type === 'INSTANCE' || n.type === 'GROUP') &&
-      n.height >= 28 && n.height <= 72 && n.width >= 40 && n.width <= 360) {
-    if ('children' in n) {
-      const texts = (n as ChildrenMixin).children.filter(c => c.type === 'TEXT')
-      const hasFrame = (n as ChildrenMixin).children.some(c => c.type !== 'TEXT')
-      // If mostly text (≥ 1 text child) with optional background, likely a button
-      if (texts.length >= 1 && texts.length <= 3) return true
+  if (!isValidFigmaNode(n)) return false
+  try {
+    if ((n.type === 'FRAME' || n.type === 'COMPONENT' || n.type === 'INSTANCE' || n.type === 'GROUP') &&
+        n.height >= 28 && n.height <= 72 && n.width >= 40 && n.width <= 360) {
+      if ('children' in n) {
+        const kids = safeAllChildren(n)
+        const texts = kids.filter(c => c.type === 'TEXT')
+        const hasFrame = kids.some(c => c.type !== 'TEXT')
+        // If mostly text (≥ 1 text child) with optional background, likely a button
+        if (texts.length >= 1 && texts.length <= 3) return true
+      }
     }
+    const name = (n.name || '').toLowerCase()
+    if (name.includes('button') || name.includes('btn') || name.includes('cta')) return true
+    return false
+  } catch (_) {
+    return false
   }
-  const name = (n.name || '').toLowerCase()
-  if (name.includes('button') || name.includes('btn') || name.includes('cta')) return true
-  return false
 }
 
 function isIconNode(n: SceneNode): boolean {
-  return (n.width <= 52 && n.height <= 52) &&
-    (n.type === 'VECTOR' || n.type === 'FRAME' || n.type === 'GROUP' || n.type === 'INSTANCE')
+  if (!isValidFigmaNode(n)) return false
+  try {
+    return (n.width <= 52 && n.height <= 52) &&
+      (n.type === 'VECTOR' || n.type === 'FRAME' || n.type === 'GROUP' || n.type === 'INSTANCE')
+  } catch (_) {
+    return false
+  }
 }
 
 function visibleChildren(node: SceneNode): SceneNode[] {
-  if (!('children' in node)) return []
-  return (node as ChildrenMixin).children.filter(c => c.visible !== false) as SceneNode[]
+  return safeChildren(node)
 }
 
 // ============================================================
@@ -533,14 +710,17 @@ function siblingSimScore(a: SceneNode, b: SceneNode): number {
   // Same type — primary signal
   if (a.type === b.type) score += 0.4
 
-  // Similar child count — only meaningful when BOTH have children
-  const aKids = 'children' in a ? (a as ChildrenMixin).children.length : 0
-  const bKids = 'children' in b ? (b as ChildrenMixin).children.length : 0
-  if (aKids > 0 && bKids > 0) {
-    const ratio = Math.min(aKids, bKids) / Math.max(aKids, bKids)
-    score += ratio * 0.3
+  // Similar child count — or both are image tiles in a gallery
+  if (isImageNode(a) && isImageNode(b)) {
+    score += 0.3
+  } else {
+    const aKids = 'children' in a ? safeChildren(a).length : 0
+    const bKids = 'children' in b ? safeChildren(b).length : 0
+    if (aKids > 0 && bKids > 0) {
+      const ratio = Math.min(aKids, bKids) / Math.max(aKids, bKids)
+      score += ratio * 0.3
+    }
   }
-  // NOTE: no bonus for "both have 0 children" — leaf nodes are NOT evidence of repetition
 
   // Similar width — must be meaningful (avoid scoring 1x1 vs 2x2 as similar)
   if (a.width > 10 && b.width > 10) {
@@ -563,15 +743,58 @@ function siblingSimScore(a: SceneNode, b: SceneNode): number {
  * - Has at least 1 child
  * - Does NOT look like a full-width section header (wide text-only)
  */
-function looksLikeCard(node: SceneNode): boolean {
+export function looksLikeCard(node: SceneNode): boolean {
+  if (!isValidFigmaNode(node)) return false
+  if (isImageNode(node)) return true
   if (node.type !== 'FRAME' && node.type !== 'COMPONENT' &&
       node.type !== 'INSTANCE' && node.type !== 'GROUP') return false
   if (!('children' in node)) return false
-  const kids = (node as ChildrenMixin).children
+  const kids = safeChildren(node)
   if (kids.length === 0) return false
   // A card-like item is NOT entirely made of a single wide text node
   if (kids.length === 1 && kids[0].type === 'TEXT') return false
   return true
+}
+
+/**
+ * Checks if a card is a metric/stat widget (e.g. Total Revenue $45.2K +18%)
+ */
+export function isMetricCard(node: SceneNode): boolean {
+  if (!looksLikeCard(node)) return false
+  if (!('children' in node)) return false
+  const kids = visibleChildren(node)
+  if (kids.length < 1 || kids.length > 7) return false
+
+  // Metric cards do NOT have product images or cart/buy buttons
+  if (kids.some(k => isImageNode(k))) return false
+  if (kids.some(k => /(buy|cart|bag|checkout|shop|price)/i.test(k.name || ''))) return false
+
+  const texts = kids.filter(k => k.type === 'TEXT') as TextNode[]
+  if (texts.length === 0) return false
+
+  return texts.some(t => {
+    const chars = (t.characters || '').trim()
+    return /^([+$€£₹¥]?\s*[\d,.]+[kKmMbB%]?|[\d,.]+%?|[+$€£₹¥]\s*[\d,.]+)$/.test(chars) ||
+           /(revenue|users|orders|conversions|bounce|sales|profit|growth|total|active|rate|sessions|views|subscribers|mrr|arr)/i.test(t.name || chars)
+  })
+}
+
+/**
+ * Checks if a card is an e-commerce product card (e.g. photo + title + $99 price)
+ */
+export function isProductCard(node: SceneNode): boolean {
+  if (!looksLikeCard(node)) return false
+  if (!('children' in node)) return false
+  const kids = visibleChildren(node)
+
+  const hasImage = kids.some(k => isImageNode(k))
+  const texts = kids.filter(k => k.type === 'TEXT') as TextNode[]
+  const hasPrice = texts.some(t => {
+    const chars = (t.characters || '').trim()
+    return /([$€£₹¥]\s*[\d,.]+|[\d,.]+\s*[$€£₹¥]|\b(USD|EUR|INR|GBP)\s*[\d,.]+)/i.test(chars)
+  })
+
+  return (hasImage && hasPrice) || (hasPrice && kids.length >= 2) || (hasImage && /(product|item|shoe|apparel|sneaker|catalog|shop)/i.test(node.name || ''))
 }
 
 /**
@@ -596,7 +819,7 @@ function detectRepeatedCollection(kids: SceneNode[]): boolean {
   // Guard: if the sibling count is small relative to containers, it may be
   // a heterogeneous composition (e.g. Hero: [image, text-group, button-group])
   // Require that at least 75% of visible children are card-like
-  const allVisible = kids.filter(k => k.visible !== false)
+  const allVisible = kids.filter(k => isNodeValidAndVisible(k))
   if (cards.length < allVisible.length * 0.75) return false
 
   // Calculate average pairwise structural similarity
@@ -617,12 +840,40 @@ function detectRepeatedCollection(kids: SceneNode[]): boolean {
  * Determines the optimal column count for a confirmed repeated collection on mobile.
  * Only called AFTER detectRepeatedCollection has returned true.
  *
- * Default is 1 column. 2 columns requires positive evidence that items
- * are compact enough to fit side-by-side and remain readable.
+ * Default is 1 column. 2 columns is applied for:
+ * - Metric / stat cards (dashboards)
+ * - E-Commerce product cards
+ * - Image / photo gallery items
+ * - Compact chips / cards (W <= 300 & H <= 300)
  */
-function detectCollectionColumns(kids: SceneNode[], vp: RVP): number {
+function detectCollectionColumns(kids: SceneNode[], vp: RVP, archetype?: string): number {
   const cards = kids.filter(k => looksLikeCard(k))
   if (cards.length === 0) return 1
+
+  // Tablet (768px - 1023px): 2 or 3 columns
+  if (vp.width >= 768 && vp.width < 1024) {
+    if (cards.length >= 4) return Math.min(cards.length <= 4 ? 2 : 3, 3)
+    return 2
+  }
+
+  // Mobile (< 768px):
+  // 1. Metric cards in dashboards: 2-column grid
+  const metricCards = cards.filter(c => isMetricCard(c))
+  if (metricCards.length >= 2 && metricCards.length >= cards.length * 0.5) {
+    return 2
+  }
+
+  // 2. Product cards in e-commerce: 2-column grid
+  const productCards = cards.filter(c => isProductCard(c))
+  if (productCards.length >= 2 || archetype === 'E_COMMERCE') {
+    return 2
+  }
+
+  // 3. Image / photo gallery: 2-column grid
+  const isAllImages = cards.every(c => isImageNode(c) || (c.type === 'FRAME' && visibleChildren(c).every(k => isImageNode(k))))
+  if (isAllImages && cards.length >= 3) {
+    return 2
+  }
 
   const sampleCount = Math.min(cards.length, 4)
   const sample = cards.slice(0, sampleCount)
@@ -630,7 +881,7 @@ function detectCollectionColumns(kids: SceneNode[], vp: RVP): number {
   const avgW = sample.reduce((s, c) => s + c.width, 0) / sampleCount
   const avgH = sample.reduce((s, c) => s + c.height, 0) / sampleCount
   const avgKidCount = sample.reduce((s, c) => {
-    return s + ('children' in c ? (c as ChildrenMixin).children.length : 0)
+    return s + ('children' in c ? safeChildren(c).length : 0)
   }, 0) / sampleCount
 
   // What would each card's width be in a 2-col layout?
@@ -644,15 +895,12 @@ function detectCollectionColumns(kids: SceneNode[], vp: RVP): number {
   if (aspectRatio > 2.0 && avgKidCount > 3) return 1
 
   // Very wide desktop cards that would be squished too much: 1 column
-  // If avg desktop card width > 60% of desktop parent, items are wide-format
-  // and would become unreadably narrow at 2-col on mobile
-  if (avgW > vp.width * 1.0) return 1  // wider than mobile viewport = full width
+  if (avgW > vp.width * 1.0) return 1
 
   // Cards that are already compact squares or short rectangles on desktop → 2 col
-  // Evidence: desktop item width < 300px AND height < 300px AND few children
   if (avgW <= 300 && avgH <= 300 && avgKidCount <= 5) return 2
 
-  // Large cards (wider desktop layout) → 1 column to preserve readability
+  // Default: 1 column to maintain readable cards
   return 1
 }
 
@@ -683,6 +931,11 @@ function isAnnouncementBar(node: SceneNode): boolean {
   if (!isValidFigmaNode(node)) return false
   const name = (node.name || '').toLowerCase()
 
+  // Navigation, header, and already-created mobile menus are NEVER announcement bars
+  if (/(nav|navbar|navigation|site-nav|main-nav)/i.test(name)) return false
+  if (/^header(\s+section)?$/i.test(name) || /(site-header|main-header)/i.test(name)) return false
+  if (/(mobile\s*nav|hamburger|menu\s*icon)/i.test(name)) return false
+
   // 1. Explicit announcement/promo/marquee keywords
   if (/(announce|promo|marquee|strip|notice|alert|broadcast|offer|deal|discount)/i.test(name)) {
     return true
@@ -690,7 +943,7 @@ function isAnnouncementBar(node: SceneNode): boolean {
 
   // 2. Any thin strip at or near the top of the canvas (height <= 56px)
   if (node.height <= 56) {
-    if (/(banner|bar|top|header|strip|sale|shipping)/i.test(name) && !/(sidebar|nav-links|menu-list)/i.test(name)) {
+    if (/(banner|strip|sale|shipping)/i.test(name) && !/(sidebar|nav-links|menu-list)/i.test(name)) {
       if ('children' in node) {
         const kids = visibleChildren(node).filter(k => !isBackgroundNode(k, node.width, node.height))
         const hasBrand = kids.some(k => isLikelyBrandElement(k))
@@ -702,16 +955,16 @@ function isAnnouncementBar(node: SceneNode): boolean {
     }
   }
 
-  // 3. Structural check: thin row (<= 52px) without brand logo and without multiple nav links
-  if (node.height <= 52 && 'children' in node) {
+  // 3. Structural check: thin row (<= 48px) without brand logo and without multiple nav links
+  if (node.height <= 48 && 'children' in node) {
     const kids = visibleChildren(node).filter(k => !isBackgroundNode(k, node.width, node.height))
     const hasBrand = kids.some(k => isLikelyBrandElement(k))
     const navLinks = kids.filter(k => isNavItemCandidate(k))
-    if (!hasBrand && navLinks.length <= 2) return true
+    if (!hasBrand && navLinks.length <= 1) return true
   }
 
   // 4. Pure text banner at top
-  if (node.type === 'TEXT' && node.height <= 52) {
+  if (node.type === 'TEXT' && node.height <= 48) {
     return true
   }
 
@@ -859,27 +1112,40 @@ function isLikelyBrandElement(n: SceneNode): boolean {
 }
 
 function hasTextContent(n: SceneNode): boolean {
-  if (n.type === 'TEXT') return true
-  if ('children' in n) {
-    for (const c of (n as ChildrenMixin).children) {
-      if (c.visible !== false && hasTextContent(c)) return true
+  if (!isValidFigmaNode(n)) return false
+  try {
+    if (n.type === 'TEXT') return true
+    if ('children' in n) {
+      for (const c of safeChildren(n)) {
+        if (hasTextContent(c)) return true
+      }
     }
+    return false
+  } catch (_) {
+    return false
   }
-  return false
 }
 
 /**
  * Checks if a candidate node looks like an individual navigation item.
  */
 function isNavItemCandidate(n: SceneNode): boolean {
+  if (!isValidFigmaNode(n)) return false
   if (isMenuTriggerElement(n)) return false
   if (isUtilityElement(n)) return false
   if (isLikelyBrandElement(n)) return false
 
-  if (n.type === 'TEXT') return true
+  if (n.type === 'TEXT') {
+    const t = n as TextNode
+    const fs = typeof t.fontSize === 'number' ? t.fontSize : 16
+    if (fs > 22) return false
+    const len = (t.characters || '').length
+    if (len > 40) return false
+    return true
+  }
 
   if ('children' in n) {
-    if (n.height > 96 || n.width > 420) return false
+    if (n.height > 64 || n.width > 300) return false
     const name = (n.name || '').toLowerCase()
     if (
       name.includes('nav') ||
@@ -889,6 +1155,10 @@ function isNavItemCandidate(n: SceneNode): boolean {
       name.includes('menu')
     ) {
       return true
+    }
+    const kids = safeChildren(n)
+    if (kids.some(k => k.type === 'TEXT' && typeof (k as TextNode).fontSize === 'number' && (k as TextNode).fontSize > 20)) {
+      return false
     }
     // Has text content anywhere inside this compact item
     if (hasTextContent(n)) return true
@@ -908,12 +1178,21 @@ function isNavLinksSection(node: SceneNode, parentH: number, origY: number): boo
 
   const name = (node.name || '').toLowerCase()
 
+  // Content sections are NEVER nav links to be consumed
+  if (/(hero|banner|intro|cta|feature|about|pricing|content|main|gallery|product|portfolio|card)/i.test(name)) return false
+
   // Footer is NEVER a nav links section to be consumed
   if (name.includes('footer')) return false
 
   // Must be located near the top of the design (top 35% of canvas height or Y <= 320)
   const relY = origY / Math.max(1, parentH)
   if (relY > 0.35 && origY > 320) return false
+
+  // If it's a content section with large heading text, it's not a nav links bar
+  if ('children' in node) {
+    const texts = safeChildren(node).filter(k => k.type === 'TEXT') as TextNode[]
+    if (texts.some(t => typeof t.fontSize === 'number' && t.fontSize > 20)) return false
+  }
 
   // If it's a very tall content section (> 220px and > 15% of page), it's not a pure nav links bar
   if (node.height > 220 && node.height / Math.max(1, parentH) > 0.15) return false
@@ -923,17 +1202,16 @@ function isNavLinksSection(node: SceneNode, parentH: number, origY: number): boo
     name.includes('nav') ||
     name.includes('menu') ||
     name.includes('link') ||
-    name.includes('tab') ||
-    name.includes('header')
+    name.includes('tab')
   ) {
     return true
   }
 
   // 2. Loose text node or button-like node at the top of the canvas
-  if (node.type === 'TEXT') {
+  if (node.type === 'TEXT' && (typeof (node as TextNode).fontSize !== 'number' || (node as TextNode).fontSize <= 20)) {
     return true
   }
-  if (isButtonLike(node) && node.width <= 220 && node.height <= 64) {
+  if (isButtonLike(node) && node.width <= 180 && node.height <= 48) {
     return true
   }
 
@@ -942,10 +1220,10 @@ function isNavLinksSection(node: SceneNode, parentH: number, origY: number): boo
 
   // 4. Container whose foreground children are primarily nav items, links, or buttons
   if ('children' in node) {
-    const kids = visibleChildren(node).filter(k => !isBackgroundNode(k, node.width, node.height))
+    const kids = safeChildren(node).filter(k => !isBackgroundNode(k, node.width, node.height))
     if (kids.length === 0) return false
     const navLikeKids = kids.filter(k => isNavItemCandidate(k) || isButtonLike(k) || isUtilityElement(k))
-    if (navLikeKids.length >= 1 && navLikeKids.length >= kids.length * 0.5) {
+    if (navLikeKids.length >= 2 && navLikeKids.length >= kids.length * 0.75) {
       return true
     }
   }
@@ -1383,8 +1661,7 @@ async function transformAutoLayoutVertical(
   const innerW = Math.max(1, targetW - node.paddingLeft - node.paddingRight)
 
   // Recurse into children that have Auto Layout or complex structure
-  for (const child of node.children) {
-    if (child.visible === false) continue
+  for (const child of safeChildren(node)) {
     if ('layoutMode' in child) {
       doResize(child, innerW, child.height)
       await reflowNode(child, vp, innerW, log)
@@ -1410,10 +1687,10 @@ async function transformAutoLayoutVertical(
     node.primaryAxisSizingMode = 'AUTO'
   } catch (_) {}
 
-  const kids = node.children.filter(c => c.visible !== false)
+  const kids = safeChildren(node)
   const totalChildH = kids.reduce((s, c) => s + c.height, 0) + Math.max(0, kids.length - 1) * (node.itemSpacing || 0)
   const expectedH = totalChildH + (node.paddingTop || 0) + (node.paddingBottom || 0)
-  const finalH = Math.max(node.height, expectedH)
+  const finalH = Math.max(expectedH, 20)
   doResize(node, targetW, finalH)
   preserveCardCornerRadius(node, targetW, finalH)
 
@@ -1436,7 +1713,7 @@ async function transformAutoLayoutHorizontal(
   vp: RVP,
   log: string[]
 ): Promise<number> {
-  const kids = node.children.filter(c => c.visible !== false)
+  const kids = safeChildren(node)
 
   // Announcement bar fast-path: preserve full width, compact height, center contents
   if (isAnnouncementBar(node)) {
@@ -1499,9 +1776,9 @@ async function transformAutoLayoutHorizontal(
         doResize(child, newAvailW, chH)
       } else if ('children' in child) {
         chH = await reflowNode(child, vp, newAvailW, log, true)
-        doResize(child, newAvailW, Math.max(chH, child.height))
+        doResize(child, newAvailW, chH)
       }
-      preserveCardCornerRadius(child, newAvailW, Math.max(chH, child.height))
+      preserveCardCornerRadius(child, newAvailW, chH)
     }
 
     try {
@@ -1510,7 +1787,7 @@ async function transformAutoLayoutHorizontal(
 
     const totalChildH = kids.reduce((s, c) => s + c.height, 0) + Math.max(0, kids.length - 1) * (node.itemSpacing || 0)
     const expectedH = totalChildH + (node.paddingTop || 0) + (node.paddingBottom || 0)
-    const finalH = Math.max(node.height, expectedH)
+    const finalH = Math.max(expectedH, 20)
     doResize(node, targetW, finalH)
     preserveCardCornerRadius(node, targetW, finalH)
 
@@ -1530,7 +1807,7 @@ async function transformAutoLayoutHorizontal(
 
     const maxChildH = Math.max(...kids.map(c => c.height), 1)
     const expectedH = maxChildH + (node.paddingTop || 0) + (node.paddingBottom || 0)
-    const finalH = Math.max(node.height, expectedH)
+    const finalH = Math.max(expectedH, 20)
     doResize(node, targetW, finalH)
     preserveCardCornerRadius(node, targetW, finalH)
 
@@ -1600,6 +1877,13 @@ async function transformNavigationNode(
   if (!isValidFigmaNode(sourceNode)) {
     console.warn('[Navigation] Node became invalid; stopping stale-node transformation', sourceNode?.id)
     return { height: H, activeNode: sourceNode }
+  }
+
+  // If sourceNode is an INSTANCE, detach it so its children and layout can be manipulated
+  if (sourceNode.type === 'INSTANCE' && 'detachInstance' in sourceNode && typeof (sourceNode as any).detachInstance === 'function') {
+    try {
+      sourceNode = (sourceNode as any).detachInstance()
+    } catch (_) {}
   }
 
   // 1. Capture required values BEFORE mutation
@@ -1919,8 +2203,8 @@ async function transformNavigationNode(
           sourceNode.visible = false
           sourceNode.locked = false
           if ('children' in sourceNode) {
-            for (const c of (sourceNode as ChildrenMixin).children) {
-              c.visible = false
+            for (const c of safeAllChildren(sourceNode)) {
+              try { c.visible = false } catch (_) {}
             }
           }
         } catch (_) {}
@@ -1965,7 +2249,9 @@ async function transformNavigationNode(
     fr.clipsContent = false
 
     // Hide all existing children
-    for (const c of [...fr.children]) c.visible = false
+    for (const c of safeAllChildren(fr)) {
+      try { c.visible = false } catch (_) {}
+    }
 
     // ONE hamburger button
     createHamburgerIcon(fr, vp.padding, Math.round((H - 26) / 2), snapshot.iconColor)
@@ -2056,7 +2342,7 @@ async function transformNavigationNode(
 
       // Prototype reactions (fallback path)
       try {
-        const hamburgerBtn = fr.children.find(c => c.name === 'Mobile Menu Icon')
+        const hamburgerBtn = safeAllChildren(fr).find(c => c.name === 'Mobile Menu Icon')
         if (hamburgerBtn && 'reactions' in hamburgerBtn) {
           ;(hamburgerBtn as any).reactions = [{
             trigger: { type: 'ON_CLICK' },
@@ -2074,8 +2360,8 @@ async function transformNavigationNode(
     }
 
     // Containment clamp
-    for (const c of fr.children) {
-      if (isValidFigmaNode(c) && c.visible !== false && !isBackgroundNode(c, vp.width, H)) {
+    for (const c of safeChildren(fr)) {
+      if (!isBackgroundNode(c, vp.width, H)) {
         if (nX(c) + c.width > vp.width) doResize(c, Math.max(8, vp.width - nX(c) - vp.padding), c.height)
         if (nX(c) < 0) setPos(c, 0, nY(c))
         if (nY(c) + c.height > H) doResize(c, c.width, Math.max(4, H - nY(c)))
@@ -2260,6 +2546,7 @@ async function transformTableNode(
   const tableW = Math.min(fr.width, vp.width) // Don't expand beyond mobile width
   const tableH = localY
   doResize(fr, tableW, tableH)
+  fr.clipsContent = true
   setPos(fr, Math.max(0, Math.round((vp.width - tableW) / 2)), nY(fr))
 
   for (const bg of bgNodes) {
@@ -2289,6 +2576,21 @@ async function transformSidebarLayout(
   vp: RVP,
   log: string[]
 ): Promise<number> {
+  // If sidebar is an instance, detach it so it can be transformed
+  if (sidebarNode.type === 'INSTANCE' && 'detachInstance' in sidebarNode && typeof (sidebarNode as any).detachInstance === 'function') {
+    try {
+      sidebarNode = (sidebarNode as any).detachInstance()
+    } catch (_) {}
+  }
+
+  for (let m = 0; m < mainNodes.length; m++) {
+    if (mainNodes[m].type === 'INSTANCE' && 'detachInstance' in mainNodes[m] && typeof (mainNodes[m] as any).detachInstance === 'function') {
+      try {
+        mainNodes[m] = (mainNodes[m] as any).detachInstance()
+      } catch (_) {}
+    }
+  }
+
   // Route sidebar through the navigation transformer to create mobile nav with single list button
   const { height: navH, activeNode: activeNav } = await transformNavigationNode(sidebarNode, vp, log)
 
@@ -2304,8 +2606,13 @@ async function transformSidebarLayout(
     if (!isValidFigmaNode(main)) continue
     setPos(main, 0, localY)
     doResize(main, vp.width, main.height)
-    const h = await reflowNode(main, vp, vp.width, log)
-    const actualH = Math.max(h, main.height)
+    let h = main.height
+    try {
+      h = await reflowNode(main, vp, vp.width, log)
+    } catch (e) {
+      console.warn('[SidebarLayout] Section reflow fallback:', e)
+    }
+    const actualH = Math.max(h, 20)
     doResize(main, vp.width, actualH)
     preserveCardCornerRadius(main, vp.width, actualH)
     localY += actualH + SPACING.SECTION
@@ -2314,9 +2621,9 @@ async function transformSidebarLayout(
 
   // Safety audits, overlap correction, and viewport clamping on parent frame
   auditAndFixOffFrameContent(parentFrame, log)
-  verifyAndCorrectSectionOverlaps(allSections.filter(s => isValidFigmaNode(s) && s.visible !== false), log)
+  verifyAndCorrectSectionOverlaps(allSections.filter(s => isNodeValidAndVisible(s)), log)
 
-  const finalTop = parentFrame.children.filter(c => c.visible !== false).sort((a, b) => nY(a) - nY(b))
+  const finalTop = safeChildren(parentFrame).sort((a, b) => nY(a) - nY(b))
   const lastSec = finalTop[finalTop.length - 1]
   const finalH = lastSec ? nY(lastSec) + lastSec.height : localY
 
@@ -2633,7 +2940,7 @@ async function transformSingleColumn(
       const h = await reflowNode(kid, vp, targetCardW, log, true)
       const fgSubKids = visibleChildren(kid).filter(c => !isBackgroundNode(c, kid.width, kid.height))
       const maxSubBottom = fgSubKids.length > 0 ? Math.max(...fgSubKids.map(c => nY(c) + c.height)) : 0
-      const actualH = Math.max(h, kid.height, maxSubBottom + 8)
+      const actualH = Math.max(h, maxSubBottom + 8, 20)
 
       doResize(kid, targetCardW, actualH)
       preserveCardCornerRadius(kid, targetCardW, actualH)
@@ -2664,6 +2971,7 @@ async function transformSingleColumn(
     setPos(bg, 0, 0)
     doResize(bg, finalContainerW, finalH)
     preserveCardCornerRadius(bg, finalContainerW, finalH)
+    try { fr.insertChild(0, bg) } catch (_) {}
   }
 
   log.push(`"${node.name}" [SINGLE_COLUMN|${alignment}]: ${fgKids.length} items stacked (${finalH}px, nested=${isNestedChild}, card=${isCard})`)
@@ -2800,10 +3108,11 @@ function auditAndFixOffFrameContent(clone: FrameNode, log: string[]): void {
   let fixCount = 0
 
   function inspectFrame(frame: FrameNode): void {
-    if (!('children' in frame) || frame.children.length === 0) return
+    if (!isValidFigmaNode(frame)) return
+    if (!('children' in frame)) return
 
-    const fgKids = frame.children.filter(
-      c => c.visible !== false && !isBackgroundNode(c, frame.width, frame.height)
+    const fgKids = safeChildren(frame).filter(
+      c => !isBackgroundNode(c, frame.width, frame.height)
     )
     if (fgKids.length === 0) return
 
@@ -2818,7 +3127,7 @@ function auditAndFixOffFrameContent(clone: FrameNode, log: string[]): void {
     if (maxChildBottom > frame.height) {
       const newH = maxChildBottom + 16
       doResize(frame, frame.width, newH)
-      for (const c of frame.children) {
+      for (const c of safeAllChildren(frame)) {
         if (isBackgroundNode(c, frame.width, newH)) {
           setPos(c, 0, 0)
           doResize(c, frame.width, newH)
@@ -2827,14 +3136,19 @@ function auditAndFixOffFrameContent(clone: FrameNode, log: string[]): void {
       fixCount++
     }
 
-    for (const c of frame.children) {
+    // Do NOT recurse into INSTANCE sublayers
+    if (frame.type === 'INSTANCE') return
+
+    for (const c of safeChildren(frame)) {
       if ('children' in c && (c.type === 'FRAME' || c.type === 'GROUP')) {
         inspectFrame(c as FrameNode)
       }
     }
   }
 
-  inspectFrame(clone)
+  try {
+    inspectFrame(clone)
+  } catch (_) {}
   if (fixCount > 0) log.push(`Off-frame audit: ${fixCount} containers adjusted`)
 }
 
@@ -2846,33 +3160,304 @@ function validateAndClampLayout(clone: FrameNode, vp: RVP, log: string[]): void 
   let clampCount = 0
 
   function checkNode(node: SceneNode, maxW: number): void {
-    const x = nX(node)
-    const w = node.width
+    if (!isNodeValidAndVisible(node)) return
+    try {
+      const x = nX(node)
+      const w = node.width
 
-    if (x < 0) {
-      setPos(node, 0, nY(node))
-      clampCount++
-    }
-    if (x + w > maxW + 4) {
-      const allowedW = Math.max(10, maxW - Math.max(0, x))
-      doResize(node, allowedW, node.height)
-      clampCount++
-    }
-
-    if ('children' in node) {
-      for (const c of (node as ChildrenMixin).children) {
-        if (c.visible !== false) checkNode(c, node.width)
+      if (x < 0) {
+        setPos(node, 0, nY(node))
+        clampCount++
       }
-    }
+      if (x + w > maxW + 4) {
+        const allowedW = Math.max(10, maxW - Math.max(0, x))
+        doResize(node, allowedW, node.height)
+        clampCount++
+      }
+
+      // Do NOT recurse into INSTANCE sublayers — their internals cannot be individually clamped
+      if (node.type === 'INSTANCE') return
+
+      if ('children' in node) {
+        for (const c of safeChildren(node)) {
+          checkNode(c, node.width)
+        }
+      }
+    } catch (_) {}
   }
 
-  for (const c of clone.children) {
-    if (c.visible !== false) checkNode(c, vp.width)
-  }
+  try {
+    for (const c of safeChildren(clone)) {
+      checkNode(c, vp.width)
+    }
+  } catch (_) {}
 
   if (clampCount > 0) {
     log.push(`Validation: ${clampCount} elements clamped to mobile viewport`)
   }
+}
+
+// ============================================================
+// SCREEN ARCHETYPE SYSTEM
+// ============================================================
+
+export type ScreenArchetype =
+  | 'MODAL_DIALOG'
+  | 'APP_DASHBOARD'
+  | 'E_COMMERCE'
+  | 'DATA_TABLE_ADMIN'
+  | 'EDITORIAL_GALLERY'
+  | 'LANDING_PAGE'
+
+export function detectScreenArchetype(
+  root: FrameNode,
+  origW: number,
+  origH: number
+): ScreenArchetype {
+  const name = (root.name || '').toLowerCase()
+  const kids = visibleChildren(root)
+
+  // 1. MODAL / DIALOG CHECK
+  const isDialogName = /(modal|dialog|popup|alert|prompt|sheet|auth|login|signup|signin|register|confirm|subscribe)/i.test(name)
+  const isCompactSize = origW <= 640 && origH <= 800
+  const hasCloseButton = kids.some(k => /(close|dismiss|cancel|x\b)/i.test(k.name || ''))
+  if ((isCompactSize && (isDialogName || hasCloseButton)) || (isDialogName && origW <= 768)) {
+    return 'MODAL_DIALOG'
+  }
+
+  // 2. DATA TABLE CHECK (Higher precedence than generic "admin")
+  const isTableName = /(table|records|grid|datatable|spreadsheet|invoices|transactions|users-list)/i.test(name)
+  const hasTableNode = kids.some(k => detectTableStructure(k)) || detectTableStructure(root)
+  if (isTableName || hasTableNode) {
+    return 'DATA_TABLE_ADMIN'
+  }
+
+  // 3. E-COMMERCE CHECK
+  const allSubKids = kids.flatMap(k => 'children' in k ? visibleChildren(k) : [k])
+  const isEcommerceName = /(shop|store|product|catalog|cart|checkout|ecommerce|market|clothing|shoes|apparel|sneakers)/i.test(name)
+  const productCards = allSubKids.filter(c => isProductCard(c))
+  if (isEcommerceName || productCards.length >= 2) {
+    return 'E_COMMERCE'
+  }
+
+  // 4. APP DASHBOARD CHECK
+  const isDashboardName = /(dash|analytics|portal|overview|console|crm|metrics|admin)/i.test(name)
+  const sidebarInfo = detectSidebarLayout(kids, origW, origH)
+  const metricCards = allSubKids.filter(c => isMetricCard(c))
+  if (sidebarInfo.hasSidebar || isDashboardName || metricCards.length >= 3) {
+    return 'APP_DASHBOARD'
+  }
+
+  // 5. EDITORIAL / PHOTO GALLERY CHECK
+  const isGalleryName = /(gallery|portfolio|lookbook|editorial|photos|photography|album|case-study)/i.test(name)
+  const imageNodes = allSubKids.filter(c => isImageNode(c))
+  if (isGalleryName || imageNodes.length >= 5) {
+    return 'EDITORIAL_GALLERY'
+  }
+
+  return 'LANDING_PAGE'
+}
+
+// ============================================================
+// VISUAL BAND SYNTHESIZER
+// ============================================================
+
+export function synthesizeVisualBands(
+  root: FrameNode,
+  origW: number,
+  origH: number,
+  log: string[]
+): void {
+  const kids = visibleChildren(root)
+  if (kids.length < 8) return
+
+  // Check if children are already organized into section frames
+  const fullWidthSections = kids.filter(k => k.width >= origW * 0.70)
+  if (fullWidthSections.length >= kids.length * 0.40) {
+    return
+  }
+
+  // Separate canvas-level backgrounds
+  const contentKids: SceneNode[] = []
+  for (const k of kids) {
+    if (isBackgroundNode(k, origW, origH) || (k.width >= origW * 0.85 && k.height >= origH * 0.85)) {
+      continue
+    }
+    contentKids.push(k)
+  }
+
+  if (contentKids.length < 8) return
+
+  contentKids.sort((a, b) => {
+    const dy = nY(a) - nY(b)
+    if (Math.abs(dy) > 12) return dy
+    return nX(a) - nX(b)
+  })
+
+  interface BandCluster {
+    minY: number
+    maxY: number
+    nodes: SceneNode[]
+  }
+
+  const clusters: BandCluster[] = []
+  let curCluster: BandCluster | null = null
+
+  for (const node of contentKids) {
+    const y1 = nY(node)
+    const y2 = y1 + node.height
+
+    if (!curCluster) {
+      curCluster = { minY: y1, maxY: y2, nodes: [node] }
+      clusters.push(curCluster)
+    } else {
+      const gap = y1 - curCluster.maxY
+      const curSpan = curCluster.maxY - curCluster.minY
+      if ((gap <= 40 || y1 <= curCluster.maxY) && (curSpan < 950 || gap <= 16)) {
+        curCluster.maxY = Math.max(curCluster.maxY, y2)
+        curCluster.nodes.push(node)
+      } else {
+        curCluster = { minY: y1, maxY: y2, nodes: [node] }
+        clusters.push(curCluster)
+      }
+    }
+  }
+
+  if (clusters.length <= 1 || clusters.every(c => c.nodes.length === 1)) {
+    return
+  }
+
+  log.push(`[SYNTHESIZER]: Clustered ${contentKids.length} loose layers into ${clusters.length} section bands`)
+
+  let bandIdx = 1
+  for (const cluster of clusters) {
+    if (cluster.nodes.length === 1 && cluster.nodes[0].width >= origW * 0.70) {
+      continue
+    }
+
+    try {
+      const bandFrame = figma.createFrame()
+      const hasNav = cluster.nodes.some(n => isLikelyBrandElement(n) || isNavItemCandidate(n))
+      const hasCard = cluster.nodes.some(n => looksLikeCard(n))
+      const hasHeading = cluster.nodes.some(n => n.type === 'TEXT' && n.width >= origW * 0.35)
+
+      let bandName = `Section Band ${bandIdx++}`
+      if (hasNav && cluster.minY <= origH * 0.20) bandName = 'Header Section'
+      else if (hasCard) bandName = 'Feature Cards Section'
+      else if (hasHeading && cluster.minY <= origH * 0.45) bandName = 'Hero Section'
+      else if (cluster.minY >= origH * 0.75) bandName = 'Footer Section'
+
+      bandFrame.name = bandName
+      const bW = origW
+      const bH = Math.max(30, cluster.maxY - cluster.minY)
+      bandFrame.resize(bW, bH)
+      setPos(bandFrame, 0, cluster.minY)
+      bandFrame.layoutMode = 'NONE'
+      bandFrame.clipsContent = false
+
+      for (const node of cluster.nodes) {
+        const relX = nX(node)
+        const relY = nY(node) - cluster.minY
+        bandFrame.appendChild(node)
+        setPos(node, relX, relY)
+      }
+
+      root.appendChild(bandFrame)
+    } catch (e) {
+      console.warn('[SynthesizeBands] Failed to wrap cluster:', e)
+    }
+  }
+}
+
+// ============================================================
+// TRANSFORMER: MODAL / DIALOG
+// ============================================================
+
+async function transformModalDialog(
+  root: FrameNode,
+  vp: RVP,
+  log: string[]
+): Promise<void> {
+  log.push(`[MODAL_DIALOG]: Reflowing compact modal/dialog layout`)
+
+  if ('layoutMode' in root && root.layoutMode !== 'NONE') {
+    root.layoutMode = 'NONE'
+  }
+
+  const kids = visibleChildren(root)
+  const bgNodes = kids.filter(k => isBackgroundNode(k, root.width, root.height))
+  const fgKids = kids.filter(k => !isBackgroundNode(k, root.width, root.height))
+
+  const dialogMargin = vp.width <= 340 ? 12 : 20
+  const targetModalW = Math.min(vp.width - dialogMargin * 2, 360)
+  const contentW = targetModalW - vp.padding * 2
+
+  let localY = vp.padding
+
+  fgKids.sort((a, b) => nY(a) - nY(b))
+
+  for (const kid of fgKids) {
+    if (/(close|dismiss|cancel|x\b)/i.test(kid.name || '') && kid.width <= 36 && kid.height <= 36) {
+      setPos(kid, targetModalW - kid.width - 16, 16)
+      continue
+    }
+
+    if (kid.type === 'TEXT') {
+      const txt = kid as TextNode
+      await reflowTextNode(txt, contentW, vp, log)
+      setPos(txt, vp.padding, localY)
+      localY += txt.height + SPACING.SMALL
+    } else if (isButtonLike(kid)) {
+      const btnW = contentW
+      const btnH = Math.min(Math.max(kid.height, 40), 48)
+      doResize(kid, btnW, btnH)
+      preserveCardCornerRadius(kid, btnW, btnH)
+      if ('children' in kid) {
+        for (const bc of visibleChildren(kid)) {
+          if (bc.type === 'TEXT') {
+            await reflowTextNode(bc as TextNode, btnW, vp)
+            setPos(bc, 0, Math.round((btnH - bc.height) / 2))
+          }
+        }
+      }
+      setPos(kid, vp.padding, localY)
+      localY += btnH + SPACING.NORMAL
+    } else if ('children' in kid) {
+      const fieldW = contentW
+      doResize(kid, fieldW, kid.height)
+      const h = await reflowNode(kid, vp, fieldW, log, true)
+      const actualH = Math.max(h, kid.height)
+      doResize(kid, fieldW, actualH)
+      preserveCardCornerRadius(kid, fieldW, actualH)
+      setPos(kid, vp.padding, localY)
+      localY += actualH + SPACING.NORMAL
+    } else {
+      const w = Math.min(kid.width, contentW)
+      doResize(kid, w, kid.height)
+      setPos(kid, vp.padding, localY)
+      localY += kid.height + SPACING.SMALL
+    }
+  }
+
+  const finalModalH = localY + vp.padding
+  const canvasH = Math.max(finalModalH + 48, vp.height <= 600 ? finalModalH + 24 : Math.min(vp.height, finalModalH + 64))
+
+  root.resize(vp.width, canvasH)
+
+  const modalLeft = Math.round((vp.width - targetModalW) / 2)
+  const modalTop = Math.round((canvasH - finalModalH) / 2)
+
+  for (const kid of fgKids) {
+    setPos(kid, modalLeft + nX(kid), modalTop + nY(kid))
+  }
+
+  for (const bg of bgNodes) {
+    setPos(bg, 0, 0)
+    doResize(bg, vp.width, canvasH)
+    try { root.insertChild(0, bg) } catch (_) {}
+  }
+
+  log.push(`[MODAL_DIALOG]: Dialog ${targetModalW}×${finalModalH}px centered on canvas ${vp.width}×${canvasH}px`)
 }
 
 // ============================================================
@@ -2890,17 +3475,37 @@ export async function applyResponsiveEngine(
     return
   }
 
+  // ---- PRE-STAGE 0: Detach component instances in the cloned copy ----
+  // The clone is an independent mobile artboard. Detaching instances converts
+  // component instances into mutable frames, preventing Figma "This property cannot be overridden in an instance: relative-transform"
+  // errors when modifying layouts, positions, and hierarchies.
+  try {
+    detachInstancesRecursively(clone)
+  } catch (e) {
+    console.warn('[ResponsiveEngine] Instance detachment warning:', e)
+  }
+
   const origW = clone.width
   const origH = clone.height
 
   log.push(`Target Viewport: ${vp.name} (${vp.width}×${vp.height}px)`)
   log.push(`Engine: Generic Structure-Aware Responsive Engine V9`)
 
+  // ---- PRE-STAGE: Screen Archetype Detection ----
+  const archetype = detectScreenArchetype(clone, origW, origH)
+  log.push(`Screen Archetype: ${archetype}`)
+
+  // Fast-path: MODAL / AUTH DIALOG
+  if (archetype === 'MODAL_DIALOG') {
+    await transformModalDialog(clone, vp, log)
+    return
+  }
+
   // ---- STAGE 1: Normalize root frame ----
   // If the root frame uses Auto Layout, snapshot child positions and remove it.
-  // The root frame itself must be free-positioned so we can do sequential section flow.
   if ('layoutMode' in clone && clone.layoutMode !== 'NONE') {
-    const snapshot = clone.children.map(c => ({
+    const kids = safeChildren(clone)
+    const snapshot = kids.map(c => ({
       node: c,
       x: nX(c),
       y: nY(c),
@@ -2915,13 +3520,15 @@ export async function applyResponsiveEngine(
     log.push(`Root frame Auto Layout normalized to free positioning`)
   }
 
+  // ---- STAGE 1.5: Visual Band Synthesizer for loose layers ----
+  synthesizeVisualBands(clone, origW, origH, log)
+
   // Set root width to target mobile width
   clone.resize(vp.width, origH)
   clone.clipsContent = false
 
   // ---- STAGE 2: Get top-level visible sections ----
-  const topLevelKids = clone.children
-    .filter(c => c.visible !== false)
+  const topLevelKids = safeChildren(clone)
     .sort((a, b) => nY(a) - nY(b))
 
   if (topLevelKids.length === 0) {
@@ -2932,8 +3539,6 @@ export async function applyResponsiveEngine(
   log.push(`Top-level sections: ${topLevelKids.length}`)
 
   // ---- STAGE 3: Detect sidebar layout at the page level ----
-  // A sidebar layout means one child is a narrow vertical strip beside the main content.
-  // In this case the entire page is treated as a sidebar-layout frame.
   const sidebarResult = detectSidebarLayout(topLevelKids, origW, origH)
 
   if (sidebarResult.hasSidebar && sidebarResult.sidebarNode) {
@@ -2954,10 +3559,6 @@ export async function applyResponsiveEngine(
       let section = topLevelKids[i]
       if (!isValidFigmaNode(section)) continue
 
-      // If navigation has ALREADY been transformed into a mobile list button,
-      // any subsequent section that is a navigation/menu/links bar or loose nav links
-      // MUST NOT be reflowed as content on the mobile page!
-      // The single list button was added in place of them.
       if (hasNavTransformed && isNavLinksSection(section, origH, nY(section))) {
         log.push(`"${section.name}": navigation items consumed into mobile list button (removed from page)`)
         section.locked = false
@@ -2994,7 +3595,6 @@ export async function applyResponsiveEngine(
           sectionH = await transformAutoLayoutHorizontal(section as FrameNode, vp.width, vp, log)
           break
         case 'NAVIGATION': {
-          // Look ahead to check if immediate subsequent sections are secondary nav/links
           const extraNavItems: SceneNode[] = []
           for (let j = i + 1; j < topLevelKids.length; j++) {
             const nextSec = topLevelKids[j]
@@ -3028,24 +3628,25 @@ export async function applyResponsiveEngine(
           break
       }
 
-      // Safety: ensure section height wraps its children
+      // Safety: strictly wrap section height to fit its children (both shrink and grow)
       if (isValidFigmaNode(activeSection) && 'children' in activeSection) {
         const fr = activeSection as FrameNode
-        const fgKids = fr.children.filter(
-          c => c.visible !== false && !isBackgroundNode(c, fr.width, fr.height)
+        const fgKids = safeChildren(fr).filter(
+          c => !isBackgroundNode(c, fr.width, fr.height) && !isBackgroundNode(c, origW, origH)
         )
         if (fgKids.length > 0) {
           const maxChildBottom = Math.max(...fgKids.map(c => nY(c) + c.height))
-          if (fr.height < maxChildBottom + 8) {
-            sectionH = maxChildBottom + 16
-            doResize(fr, vp.width, sectionH)
-            preserveCardCornerRadius(fr, vp.width, sectionH)
-            for (const bg of fr.children) {
-              if (isBackgroundNode(bg, fr.width, fr.height)) {
-                setPos(bg, 0, 0)
-                doResize(bg, vp.width, sectionH)
-                preserveCardCornerRadius(bg, vp.width, sectionH)
-              }
+          const minPad = isAnnouncementBar(fr) ? 0 : 16
+          const contentDrivenH = Math.max(maxChildBottom + minPad, 24)
+          sectionH = contentDrivenH
+          doResize(fr, vp.width, sectionH)
+          preserveCardCornerRadius(fr, vp.width, sectionH)
+          for (const bg of safeAllChildren(fr)) {
+            if (isBackgroundNode(bg, fr.width, fr.height) || isBackgroundNode(bg, origW, origH)) {
+              setPos(bg, 0, 0)
+              doResize(bg, vp.width, sectionH)
+              preserveCardCornerRadius(bg, vp.width, sectionH)
+              try { fr.insertChild(0, bg) } catch (_) {}
             }
           }
         }
@@ -3056,18 +3657,16 @@ export async function applyResponsiveEngine(
       currentY = (isValidFigmaNode(activeSection) ? nY(activeSection) : currentY) + finalH + gap
     }
 
-    // ---- STAGE 5: Off-frame safety audit (run BEFORE spacing alignment so expansions are accommodated) ----
+    // ---- STAGE 5: Off-frame safety audit ----
     auditAndFixOffFrameContent(clone, log)
 
     // ---- STAGE 6: Overlap & Spacing Alignment ----
-    // Snap section 0 to (0, 0) and stack all subsequent sections with exact SPACING.SECTION
-    const liveTopLevelKids = topLevelKids.filter(k => isValidFigmaNode(k) && k.visible !== false)
+    const liveTopLevelKids = topLevelKids.filter(k => isNodeValidAndVisible(k))
     verifyAndCorrectSectionOverlaps(liveTopLevelKids, log)
   }
 
   // ---- STAGE 7: Content-driven final frame height ----
-  const allTop = clone.children
-    .filter(c => c.visible !== false)
+  const allTop = safeChildren(clone)
     .sort((a, b) => nY(a) - nY(b))
 
   const lastSection = allTop[allTop.length - 1]
