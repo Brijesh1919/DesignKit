@@ -383,6 +383,70 @@ export interface ResponsivePreviewSummary {
   issuesResolved: number;
 }
 
+// --------------- Text QA Types ---------------
+
+export type TextIssueType = 'SPELLING' | 'GRAMMAR' | 'SPACING' | 'PUNCTUATION' | 'TYPOGRAPHY';
+export type TextIssueSeverity = 'ERROR' | 'WARNING' | 'INFO';
+
+export interface TextIssue {
+  id: string;
+  nodeId: string;
+  nodeName: string;
+  type: TextIssueType;
+  start: number;
+  end: number;
+  original: string;
+  suggestions: string[];
+  replacement: string;
+  message: string;
+  severity: TextIssueSeverity;
+  isSafe?: boolean;
+  contextBefore?: string;
+  contextAfter?: string;
+}
+
+export interface CollectedTextNode {
+  nodeId: string;
+  nodeName: string;
+  characters: string;
+  textContent: string;
+  parentName?: string;
+  parentId?: string;
+}
+
+export interface CollectTextNodesResponse {
+  nodes: CollectedTextNode[];
+  rootName?: string;
+  selectionCount: number;
+}
+
+export interface ApplyTextCorrectionPayload {
+  nodeId: string;
+  start: number;
+  end: number;
+  original: string;
+  replacement: string;
+  issueId: string;
+}
+
+export interface ApplyBatchCorrectionsPayload {
+  corrections: ApplyTextCorrectionPayload[];
+}
+
+export interface ReviewHighlightItem {
+  nodeId: string;
+  type: TextIssueType;
+  start?: number;
+  end?: number;
+  original?: string;
+  issueId?: string;
+}
+
+export interface SetReviewHighlightsPayload {
+  enabled: boolean;
+  items?: ReviewHighlightItem[];
+}
+
 // --------------- Message Protocol ---------------
 
 // Messages sent from the UI iframe → plugin sandbox
@@ -423,7 +487,15 @@ export type UIMessage =
   // Developer
   | { type: 'GET_CSS_GENERATOR_DATA' }
   | { type: 'GET_COLOR_EXPORT_DATA'; payload?: { scope?: 'selection' | 'page' } }
-  | { type: 'GET_DESIGN_TOKENS_DATA'; payload?: { scope?: 'selection' | 'page' } };
+  | { type: 'GET_DESIGN_TOKENS_DATA'; payload?: { scope?: 'selection' | 'page' } }
+  // Text QA
+  | { type: 'COLLECT_TEXT_NODES' }
+  | { type: 'TEXT_QA_APPLY_CORRECTION'; payload: ApplyTextCorrectionPayload }
+  | { type: 'TEXT_QA_APPLY_BATCH_CORRECTIONS'; payload: ApplyBatchCorrectionsPayload }
+  | { type: 'TEXT_QA_SET_HIGHLIGHTS'; payload: SetReviewHighlightsPayload }
+  | { type: 'TEXT_QA_CLEAR_HIGHLIGHTS' }
+  | { type: 'TEXT_QA_FOCUS_WORD'; payload: { nodeId: string; start: number; end: number; original: string; issueType?: TextIssueType } };
+
 
 // Messages sent from the plugin sandbox → UI iframe
 export type PluginMessage =
@@ -452,4 +524,9 @@ export type PluginMessage =
   // Developer
   | { type: 'CSS_GENERATOR_DATA'; payload: CssGeneratorData | null }
   | { type: 'COLOR_EXPORT_DATA'; payload: ColorExportData }
-  | { type: 'DESIGN_TOKENS_DATA'; payload: DesignTokensData };
+  | { type: 'DESIGN_TOKENS_DATA'; payload: DesignTokensData }
+  // Text QA
+  | { type: 'COLLECTED_TEXT_NODES'; payload: CollectTextNodesResponse }
+  | { type: 'TEXT_QA_CORRECTION_APPLIED'; payload: { issueId: string; nodeId: string; success: boolean } }
+  | { type: 'TEXT_QA_BATCH_APPLIED'; payload: { count: number; success: boolean } };
+

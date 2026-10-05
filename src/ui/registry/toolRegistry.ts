@@ -16,6 +16,7 @@ export type ToolCategoryId =
   | 'responsive'
   | 'cleanup'
   | 'developer'
+  | 'content'
 
 export interface ToolDef {
   id: string
@@ -59,6 +60,7 @@ const StyleCleanup       = lazy(() => import('../tools/cleanup/StyleCleanup'))
 const CssGenerator       = lazy(() => import('../tools/developer/CssGenerator'))
 const ColorExport        = lazy(() => import('../tools/developer/ColorExport'))
 const DesignTokenExport  = lazy(() => import('../tools/developer/DesignTokenExport'))
+const TextQA             = lazy(() => import('../tools/content/TextQA'))
 
 // ---- Category + Tool definitions ----
 
@@ -418,6 +420,23 @@ export const CATEGORIES: CategoryDef[] = [
         categoryId: 'developer',
         implemented: true,
         component: DesignTokenExport,
+      },
+    ],
+  },
+
+  {
+    id: 'content',
+    label: 'Content',
+    iconName: 'content',
+    tools: [
+      {
+        id: 'text-qa',
+        name: 'Text QA',
+        description: 'Audit text for spelling, grammar, spacing, and punctuation issues',
+        keywords: ['text', 'qa', 'spelling', 'grammar', 'proofread', 'spacing', 'punctuation', 'typo'],
+        categoryId: 'content',
+        implemented: true,
+        component: TextQA,
       },
     ],
   },

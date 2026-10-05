@@ -743,6 +743,139 @@ await testCase('Figma Invalidation Safety: Destroyed instance sublayers & table 
   assert.ok(root.height > 0)
 })
 
+// ----------------------------------------------------
+// TEST 12: Real-World Long Landing Page with True Reflow
+// ----------------------------------------------------
+await testCase('Real-World Long Landing Page: 2-Col Hero, Multi-Col Features, 4-Col Footer reflow without ghost gaps or overflow', async () => {
+  const root = new MockNode('FRAME', 'Landing Page Desktop', 1440, 3600)
+
+  // 1. Header (Desktop 1440x80)
+  const header = new MockNode('FRAME', 'Site Header', 1440, 80)
+  header.x = 0; header.y = 0
+  header.appendChild(createText('Brand Logo', 'AcmeSaaS', 22, 160, 28, 60, 26))
+  const navLinks = new MockNode('FRAME', 'Nav Links Container', 480, 30)
+  navLinks.x = 360; navLinks.y = 25
+  navLinks.appendChild(createText('Nav 1', 'Features', 14, 80, 20, 0, 5))
+  navLinks.appendChild(createText('Nav 2', 'Pricing', 14, 80, 20, 100, 5))
+  navLinks.appendChild(createText('Nav 3', 'Docs', 14, 80, 20, 200, 5))
+  navLinks.appendChild(createText('Nav 4', 'Blog', 14, 80, 20, 300, 5))
+  header.appendChild(navLinks)
+  header.appendChild(createButton('Header CTA', 'Get Started', 140, 44, 1240, 18))
+  root.appendChild(header)
+
+  // 2. Hero Section (Desktop 2-column: Text Left, Illustration Right)
+  const hero = new MockNode('FRAME', 'Hero Section', 1440, 620)
+  hero.x = 0; hero.y = 80
+  const heroLeft = new MockNode('FRAME', 'Hero Text Group', 600, 420)
+  heroLeft.x = 80; heroLeft.y = 80
+  heroLeft.appendChild(createText('Hero Badge', 'New Feature Available', 12, 180, 24, 0, 0))
+  heroLeft.appendChild(createText('Hero Title', 'Scale Your Business With Intelligent Design Tools', 48, 560, 120, 0, 36))
+  heroLeft.appendChild(createText('Hero Subtitle', 'Automate repetitive workflows and ship products 10x faster with AI-powered native components.', 18, 520, 60, 0, 180))
+  heroLeft.appendChild(createButton('Hero CTA', 'Start Free Trial', 160, 48, 0, 270))
+  hero.appendChild(heroLeft)
+
+  const heroImg = createImage('Hero Illustration', 640, 440, 720, 70)
+  hero.appendChild(heroImg)
+
+  const decorBlur = new MockNode('ELLIPSE', 'ambient-blur', 120, 120)
+  decorBlur.x = 680; decorBlur.y = 50
+  hero.appendChild(decorBlur)
+  root.appendChild(hero)
+
+  // 3. Features Section (Desktop 3-column cards)
+  const features = new MockNode('FRAME', 'Features Grid Section', 1440, 540)
+  features.x = 0; features.y = 700
+  features.appendChild(createText('Section Heading', 'Engineered for Performance and Scale', 32, 600, 44, 420, 40))
+
+  for (let i = 0; i < 3; i++) {
+    const col = new MockNode('FRAME', `Feature Card ${i + 1}`, 380, 280)
+    col.x = 80 + i * 450
+    col.y = 120
+    col.fills = [{ type: 'SOLID', color: { r: 0.96, g: 0.97, b: 0.99 }, visible: true }]
+    col.appendChild(createText('Col Title', `Feature Tier ${i + 1}`, 20, 320, 28, 24, 24))
+    col.appendChild(createText('Col Desc', 'Comprehensive tooling designed to adapt to your unique engineering workflows seamlessly.', 14, 320, 60, 24, 64))
+    col.appendChild(createButton('Col Btn', 'Explore Feature', 140, 38, 24, 150))
+    features.appendChild(col)
+  }
+  root.appendChild(features)
+
+  // 4. Testimonials (Single wide card)
+  const testimonial = new MockNode('FRAME', 'Testimonial Section', 1440, 380)
+  testimonial.x = 0; testimonial.y = 1240
+  const quoteCard = new MockNode('FRAME', 'Quote Container', 1040, 260)
+  quoteCard.x = 200; quoteCard.y = 50
+  quoteCard.fills = [{ type: 'SOLID', color: { r: 0.98, g: 0.98, b: 0.98 }, visible: true }]
+  quoteCard.appendChild(createText('Quote Text', '"DesignKit completely transformed how our team adapts complex landing pages to mobile."', 24, 960, 80, 40, 40))
+  quoteCard.appendChild(createText('Author', 'Sarah Connor, Head of Product at Cyberdyne', 14, 400, 24, 40, 140))
+  testimonial.appendChild(quoteCard)
+  root.appendChild(testimonial)
+
+  // 5. 4-Column Footer
+  const footer = new MockNode('FRAME', 'Site Footer', 1440, 460)
+  footer.x = 0; footer.y = 1620
+
+  const brandCol = new MockNode('FRAME', 'Brand Column', 260, 180)
+  brandCol.x = 80; brandCol.y = 60
+  brandCol.appendChild(createText('Footer Brand', 'AcmeSaaS Inc.', 20, 200, 28, 0, 0))
+  brandCol.appendChild(createText('Brand Tagline', 'The universal design-to-code automation platform.', 14, 220, 44, 0, 40))
+  footer.appendChild(brandCol)
+
+  const colNames = ['Product Links', 'Resources Links', 'Company Links']
+  for (let c = 0; c < 3; c++) {
+    const linkCol = new MockNode('FRAME', colNames[c], 180, 180)
+    linkCol.x = 420 + c * 240
+    linkCol.y = 60
+    linkCol.appendChild(createText('Col Header', colNames[c], 16, 160, 24, 0, 0))
+    for (let l = 0; l < 4; l++) {
+      linkCol.appendChild(createText(`Link ${l + 1}`, `Page Link ${l + 1}`, 14, 160, 20, 0, 36 + l * 28))
+    }
+    footer.appendChild(linkCol)
+  }
+
+  const divider = new MockNode('RECTANGLE', 'Footer Divider', 1280, 1)
+  divider.x = 80; divider.y = 300
+  footer.appendChild(divider)
+
+  const copyright = createText('Copyright Text', '© 2026 AcmeSaaS Inc. All rights reserved.', 12, 380, 20, 80, 330)
+  footer.appendChild(copyright)
+
+  const legalLinks = createText('Legal Links', 'Privacy Policy · Terms of Service · Cookies', 12, 320, 20, 1040, 330)
+  footer.appendChild(legalLinks)
+  root.appendChild(footer)
+
+  const log = []
+  await applyResponsiveEngine(root, 'mobile', log)
+
+  // --- Assertions ---
+  // A. Frame width is mobile 390px
+  assert.strictEqual(root.width, 390, 'Root must be resized to 390px')
+
+  // B. Entire document height must be compact (no ghost expansion)
+  assert.ok(root.height <= 3200, `Document height must be compact (<= 3200px), got ${root.height}px`)
+  assert.ok(root.height >= 1200, `Document height must be realistic (>= 1200px), got ${root.height}px`)
+
+  // C. Footer reflowed compactly
+  assert.ok(footer.height <= 950, `Footer must reflow cleanly without massive blank gap (<= 950px), got ${footer.height}px`)
+
+  // D. No elements positioned off-canvas or exceeding mobile bounds
+  function assertInViewport(node, maxW) {
+    if ('children' in node) {
+      for (const c of node.children) {
+        if (!c.visible) continue
+        const x = c.x
+        const r = x + c.width
+        assert.ok(x >= 0, `Node "${c.name}" has negative x: ${x}`)
+        assert.ok(r <= maxW + 6, `Node "${c.name}" overflows right edge: ${r} > ${maxW + 6} (x=${x}, w=${c.width})`)
+        assertInViewport(c, maxW)
+      }
+    }
+  }
+  assertInViewport(root, 390)
+
+  // E. Hero illustration must be constrained to mobile width
+  assert.ok(heroImg.width <= 350, `Hero image must be scaled to mobile width (<= 350px), got ${heroImg.width}px`)
+})
+
 console.log(`\n========================================`)
 console.log(`Suite Complete: ${passed} Passed, ${failed} Failed`)
 console.log(`========================================\n`)

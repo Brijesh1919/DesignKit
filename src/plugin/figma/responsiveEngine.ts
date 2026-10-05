@@ -297,8 +297,43 @@ export function isImageNode(n: SceneNode): boolean {
 function isBackgroundNode(n: SceneNode, containerW: number, containerH: number): boolean {
   if (!isValidFigmaNode(n)) return false
   try {
+    const name = (n.name || '').toLowerCase()
+    if (/(^bg$|^background$|backdrop|canvas-bg)/i.test(name) && n.width >= containerW * 0.45) {
+      return true
+    }
+
+    // A node with text content or 2+ interactive/layout children is NEVER a background node!
+    if (hasTextContent(n)) return false
+    if ('children' in n && safeChildren(n).length >= 2) return false
+
     if (n.type === 'RECTANGLE' || n.type === 'VECTOR') {
-      if (n.width >= containerW * 0.70 && n.height >= containerH * 0.50) return true
+      if (nX(n) <= 16 && nY(n) <= 16 && n.width >= containerW * 0.85 && n.height >= containerH * 0.85) return true
+    } else if (n.type === 'FRAME') {
+      if (nX(n) <= 16 && nY(n) <= 16 && n.width >= containerW * 0.90 && n.height >= containerH * 0.90) return true
+    }
+    return false
+  } catch (_) {
+    return false
+  }
+}
+
+/**
+ * Checks if a node is an absolute decorative element that should not drive vertical flow.
+ * (e.g. floating background shapes, vector blurs, sparkles, or explicit ABSOLUTE positioned nodes).
+ */
+function isDecorativeNode(n: SceneNode): boolean {
+  if (!isValidFigmaNode(n)) return false
+  try {
+    if ('layoutPositioning' in n && (n as any).layoutPositioning === 'ABSOLUTE') {
+      return true
+    }
+    const name = (n.name || '').toLowerCase()
+    if (/(decor|accent|blob|glow|blur|sparkle|float|particle|ambient)/i.test(name)) {
+      return true
+    }
+    if ((n.type === 'VECTOR' || n.type === 'ELLIPSE' || n.type === 'POLYGON' || n.type === 'STAR') &&
+        n.width <= 64 && n.height <= 64 && !('children' in n)) {
+      return true
     }
     return false
   } catch (_) {
@@ -517,17 +552,60 @@ function detectAlignmentIntent(
   const allFull = kids.every(k => k.width >= parentW * 0.90)
   if (allFull) return 'FILL'
 
+  // If text nodes explicitly have CENTER text alignment
+  const textKids = kids.filter(k => k.type === 'TEXT') as TextNode[]
+  const centerTextCount = textKids.filter(t => t.textAlignHorizontal === 'CENTER').length
+  if (textKids.length > 0 && centerTextCount >= textKids.length * 0.60) {
+    return 'CENTER'
+  }
+
+  // Check left edge of children: if children start near the left margin, they are LEFT aligned
+  const minX = Math.min(...kids.map(k => nX(k)))
+  if (minX <= 28 || minX <= parentW * 0.10) {
+    return 'LEFT'
+  }
+
   // Measure each child's visual center relative to parent
   const centerOffsets = kids.map(k => {
     const kCenter = nX(k) + k.width / 2
     return kCenter - parentCenter
   })
   const avgOffset = centerOffsets.reduce((s, v) => s + v, 0) / kids.length
-  const tolerance = parentW * 0.18
+  const tolerance = parentW * 0.15
 
-  if (Math.abs(avgOffset) <= tolerance) return 'CENTER'
+  if (Math.abs(avgOffset) <= tolerance && minX >= parentW * 0.12) return 'CENTER'
   if (avgOffset > tolerance) return 'RIGHT'
   return 'LEFT'
+}
+
+/**
+ * Clusters children into column groups when desktop layout has loose multi-column elements.
+ * Prevents side-by-side elements (e.g. Hero Text + Image) from having their internal elements
+ * jumbled together during sequential Y-sorting.
+ */
+function clusterKidsIntoColumns(kids: SceneNode[], containerW: number): SceneNode[] {
+  if (kids.length < 3) return kids
+
+  const xs = kids.map(k => nX(k))
+  const minX = Math.min(...xs)
+  const maxX = Math.max(...xs)
+
+  // If all items are clustered within 35% width, they are a single column
+  if (maxX - minX < containerW * 0.35) {
+    return kids
+  }
+
+  const midX = minX + (maxX - minX) / 2
+  const leftCol = kids.filter(k => nX(k) + k.width / 2 < midX)
+  const rightCol = kids.filter(k => nX(k) + k.width / 2 >= midX)
+
+  if (leftCol.length >= 1 && rightCol.length >= 1) {
+    leftCol.sort((a, b) => nY(a) - nY(b))
+    rightCol.sort((a, b) => nY(a) - nY(b))
+    return [...leftCol, ...rightCol]
+  }
+
+  return kids
 }
 
 /**
@@ -753,6 +831,14 @@ export function looksLikeCard(node: SceneNode): boolean {
   if (kids.length === 0) return false
   // A card-like item is NOT entirely made of a single wide text node
   if (kids.length === 1 && kids[0].type === 'TEXT') return false
+
+  // Sections that span full desktop width (>= 500px) or are named section/area/wrapper/feed are NOT individual cards!
+  const name = (node.name || '').toLowerCase()
+  if (node.width >= 500) {
+    if (/(section|area|wrapper|container|feed|main|body)/i.test(name)) return false
+    if (node.height >= 180) return false
+  }
+
   return true
 }
 
@@ -810,6 +896,11 @@ export function isProductCard(node: SceneNode): boolean {
  * DEFAULT: false — when in doubt, do NOT classify as repeated.
  */
 function detectRepeatedCollection(kids: SceneNode[]): boolean {
+  // If any sibling is a wide section (width >= 500) or named section/feed, this is NOT a repeated collection of cards
+  if (kids.some(k => k.width >= 500 && /(section|area|wrapper|container|feed|main)/i.test(k.name || ''))) {
+    return false
+  }
+
   // Filter to only proper containers that look like cards
   const cards = kids.filter(k => looksLikeCard(k))
 
@@ -821,6 +912,12 @@ function detectRepeatedCollection(kids: SceneNode[]): boolean {
   // Require that at least 75% of visible children are card-like
   const allVisible = kids.filter(k => isNodeValidAndVisible(k))
   if (cards.length < allVisible.length * 0.75) return false
+
+  // Check height variance: cards in a repeated collection should have reasonably similar heights
+  const heights = cards.map(c => c.height)
+  const minH = Math.min(...heights)
+  const maxH = Math.max(...heights)
+  if (maxH > 0 && minH / maxH < 0.50) return false
 
   // Calculate average pairwise structural similarity
   let totalSim = 0
@@ -1451,6 +1548,69 @@ function isHorizontallyArranged(kids: SceneNode[], parentW: number): boolean {
 }
 
 /**
+ * Detects if a container has 2 prominent side-by-side columns (e.g. Hero [Text | Image] or Feature [Col 1 | Col 2]).
+ */
+function isTwoColumnLayout(kids: SceneNode[], containerW: number): boolean {
+  // If container is already narrow (e.g. a card < 450px), it's not a two-column layout section!
+  if (containerW < 450) return false
+  if (kids.length < 2) return false
+
+  const xs = kids.map(k => nX(k))
+  const minX = Math.min(...xs)
+  const maxX = Math.max(...xs)
+
+  // Must span across at least 35% of the desktop container width
+  if (maxX - minX < containerW * 0.35) return false
+
+  if (kids.length === 2) {
+    const [a, b] = kids
+    const separation = Math.abs(nX(b) - nX(a))
+    return separation >= containerW * 0.20
+  }
+
+  const midX = minX + (maxX - minX) / 2
+  const leftKids = kids.filter(k => nX(k) + k.width / 2 < midX)
+  const rightKids = kids.filter(k => nX(k) + k.width / 2 >= midX)
+  return leftKids.length >= 1 && rightKids.length >= 1
+}
+
+/**
+ * Detects if a node is a footer section with multi-column links, copyright, or footer topology.
+ */
+function detectFooterStructure(node: SceneNode, parentH: number): boolean {
+  if (!('children' in node)) return false
+  const name = (node.name || '').toLowerCase()
+
+  // Guard against tables, grids, dashboards, analytics, forms, etc.
+  if (/(table|grid|data|chart|metrics|dash|analytics|invoices|transactions|records|form|modal|dialog)/i.test(name)) {
+    return false
+  }
+
+  const isNamedFooter = /(footer|colophon|site-footer|page-footer)/i.test(name)
+
+  const relY = nY(node) / Math.max(1, parentH)
+  const isNearBottom = (parentH >= 1200 && relY >= 0.75) || (parentH > 0 && nY(node) >= parentH - 900 && relY >= 0.70)
+
+  const kids = visibleChildren(node)
+  const hasCopyright = kids.some(k => {
+    const kn = (k.name || '').toLowerCase()
+    const kt = k.type === 'TEXT' ? ((k as TextNode).characters || '').toLowerCase() : ''
+    return /(copyright|all rights reserved|©|\b202\d\b|privacy policy|terms of service)/i.test(kn) ||
+           /(copyright|all rights reserved|©|\b202\d\b|privacy policy|terms of service)/i.test(kt)
+  })
+
+  const linkColCount = kids.filter(k => {
+    const kn = (k.name || '').toLowerCase()
+    return /(links|column|col|navigation|menu|legal|company|product|resources|about|support)/i.test(kn) ||
+           ('children' in k && visibleChildren(k).filter(c => c.type === 'TEXT').length >= 3)
+  }).length
+
+  if (isNamedFooter) return true
+  if (isNearBottom && (hasCopyright || linkColCount >= 2)) return true
+  return false
+}
+
+/**
  * Detects if a node is a table-like structure.
  * Table: a vertical list of rows where each row has very consistent
  * child count and horizontal spans.
@@ -1567,6 +1727,7 @@ export type LayoutStrategy =
   | 'AUTO_LAYOUT_VERTICAL'    // Existing vertical AL → preserve, scale padding
   | 'AUTO_LAYOUT_HORIZONTAL'  // Existing horizontal AL → may flip to VERTICAL
   | 'NAVIGATION'              // Navigation bar → mobile nav (hamburger + brand + actions)
+  | 'FOOTER'                  // Multi-column / page footer → clean mobile vertical flow
   | 'REPEATED_COLLECTION'     // Repeated siblings → N-column grid
   | 'TABLE'                   // Table rows → horizontal scroll or stacked
   | 'SIDEBAR_LAYOUT'          // Sidebar + main → stack vertically
@@ -1590,16 +1751,21 @@ function determineStrategy(
   alreadyHasNav = false
 ): LayoutStrategy {
   // 1. NAVIGATION — horizontal frame near top with brand + links
-  // ONLY for top-level section near top of page, and ONLY if navigation hasn't already been reflowed!
-  // This avoids Auto Layout headers being misclassified as AUTO_LAYOUT_HORIZONTAL, and prevents
-  // nested children or repeated sections from ever generating multiple mobile menus.
   if (isTopLevel && !alreadyHasNav && detectNavigationStructure(node, parentH)) {
     return 'NAVIGATION'
   }
 
+  // 2. TABLE — check table before footer or horizontal group so data tables don't get misclassified
+  if (detectTableStructure(node)) return 'TABLE'
+
+  // 3. FOOTER — multi-column links / copyright / bottom content
+  if (detectFooterStructure(node, parentH)) {
+    return 'FOOTER'
+  }
+
   const alMode = detectAutoLayout(node)
 
-  // 2. AUTO LAYOUT — preserve existing AL structure
+  // 4. AUTO LAYOUT — preserve existing AL structure
   if (alMode === 'HORIZONTAL') return 'AUTO_LAYOUT_HORIZONTAL'
   if (alMode === 'VERTICAL') return 'AUTO_LAYOUT_VERTICAL'
 
@@ -1607,16 +1773,15 @@ function determineStrategy(
   const kids = visibleChildren(node).filter(k => !isBackgroundNode(k, node.width, node.height))
   if (kids.length === 0) return 'SINGLE_COLUMN'
 
-  // 3. TABLE — consistent rows spanning full width
-  if (detectTableStructure(node)) return 'TABLE'
-
-  // 4. REPEATED COLLECTION — structurally similar sibling items
+  // 5. REPEATED COLLECTION — structurally similar sibling items
   if (detectRepeatedCollection(kids)) return 'REPEATED_COLLECTION'
 
-  // 5. HORIZONTAL GROUP — non-AL children arranged horizontally
-  if (kids.length >= 2 && isHorizontallyArranged(kids, node.width)) return 'HORIZONTAL_GROUP'
+  // 6. HORIZONTAL GROUP — non-AL children arranged horizontally or 2-column hero/feature
+  if (kids.length >= 2 && (isHorizontallyArranged(kids, node.width) || isTwoColumnLayout(kids, node.width))) {
+    return 'HORIZONTAL_GROUP'
+  }
 
-  // 6. DEFAULT
+  // 7. DEFAULT
   return 'SINGLE_COLUMN'
 }
 
@@ -1742,7 +1907,6 @@ async function transformAutoLayoutHorizontal(
   }
 
   const totalChildW = kids.reduce((s, c) => s + c.width, 0) + (kids.length - 1) * (node.itemSpacing || 0)
-  const availW = targetW - (node.paddingLeft || 0) - (node.paddingRight || 0)
 
   // Scale padding
   const scalePad = (v: number) => Math.min(v, vp.padding)
@@ -1755,7 +1919,12 @@ async function transformAutoLayoutHorizontal(
 
   const newAvailW = targetW - node.paddingLeft - node.paddingRight
 
-  if (totalChildW > availW && vp.width < 768) {
+  // Flip to vertical if children exceed available width OR on mobile where substantial columns are side-by-side
+  const shouldFlip =
+    totalChildW > newAvailW ||
+    (vp.width < 768 && kids.length >= 2 && kids.some(c => c.width >= newAvailW * 0.40))
+
+  if (shouldFlip) {
     // Children won't fit horizontally → switch to vertical
     node.layoutMode = 'VERTICAL'
     node.primaryAxisAlignItems = 'MIN'
@@ -2722,6 +2891,187 @@ async function transformHorizontalGroup(
 }
 
 // ============================================================
+// TRANSFORMER: FOOTER (Clean Mobile Flow)
+// ============================================================
+
+/**
+ * Transforms a multi-column desktop footer into a clean, compact vertical mobile flow.
+ *
+ * Requirements:
+ * 1. Brand/Logo positioned at top.
+ * 2. Multi-column link structures reflowed vertically: Category header + link list.
+ * 3. Dividers resized to available content width.
+ * 4. Social icon row positioned cleanly within content width.
+ * 5. Copyright / legal text stacked neatly at the bottom.
+ * 6. Footer container height strictly follows actual content bounds (no giant empty block).
+ * 7. Background resized to match final bounds.
+ * 8. All desktop column X coordinates (e.g. 700, 1000) recalculated inside mobile viewport.
+ */
+async function transformFooterLayout(
+  node: SceneNode,
+  vp: RVP,
+  log: string[],
+  parentW?: number
+): Promise<number> {
+  if (!('children' in node)) return node.height
+
+  const fr = node as FrameNode
+  if ('layoutMode' in fr && fr.layoutMode !== 'NONE') fr.layoutMode = 'NONE'
+
+  const containerW = parentW ? Math.min(parentW, vp.width) : vp.width
+  const contentW = Math.max(10, containerW - vp.padding * 2)
+  const baseX = vp.padding
+
+  const allKids = visibleChildren(node)
+  const bgNodes = allKids.filter(k => isBackgroundNode(k, fr.width, fr.height))
+  const fgKids = allKids.filter(k => !isBackgroundNode(k, fr.width, fr.height) && !isDecorativeNode(k))
+
+  if (fgKids.length === 0) {
+    doResize(fr, containerW, 120)
+    return 120
+  }
+
+  // Classify footer components
+  const brandNodes: SceneNode[] = []
+  const copyrightNodes: SceneNode[] = []
+  const dividerNodes: SceneNode[] = []
+  const socialNodes: SceneNode[] = []
+  const columnNodes: SceneNode[] = []
+
+  for (const kid of fgKids) {
+    const kn = (kid.name || '').toLowerCase()
+    const kt = kid.type === 'TEXT' ? ((kid as TextNode).characters || '').toLowerCase() : ''
+    const isCopy = /(copyright|all rights reserved|©|\b202\d\b)/i.test(kn) || /(copyright|all rights reserved|©|\b202\d\b)/i.test(kt)
+    const isDivider = (kid.height <= 4 && kid.width >= fr.width * 0.40) || /divider|separator|line/i.test(kn)
+    const isSocial = /social|icon-group|icons|twitter|facebook|instagram|linkedin|github/i.test(kn) || (isIconNode(kid) && kid.width <= 44)
+    const isBrand = (isLikelyBrandElement(kid) || /brand|logo/i.test(kn)) && columnNodes.length === 0
+
+    if (isCopy) {
+      copyrightNodes.push(kid)
+    } else if (isDivider) {
+      dividerNodes.push(kid)
+    } else if (isSocial) {
+      socialNodes.push(kid)
+    } else if (isBrand) {
+      brandNodes.push(kid)
+    } else {
+      columnNodes.push(kid)
+    }
+  }
+
+  // If columns were side-by-side in desktop, sort by original X
+  columnNodes.sort((a, b) => nX(a) - nX(b))
+
+  let localY = vp.padding
+
+  // 1. Brand / Logo
+  for (const b of brandNodes) {
+    setPos(b, baseX, localY)
+    if (b.type === 'TEXT') {
+      const bh = await reflowTextNode(b as TextNode, contentW, vp, log)
+      localY += bh + SPACING.NORMAL
+    } else {
+      const bw = Math.min(b.width, contentW)
+      doResize(b, bw, b.height)
+      localY += b.height + SPACING.NORMAL
+    }
+  }
+
+  // 2. Link Columns — stacked sequentially as a clean mobile flow
+  for (const col of columnNodes) {
+    setPos(col, baseX, localY)
+    doResize(col, contentW, col.height)
+
+    if ('children' in col) {
+      const colKids = visibleChildren(col).filter(c => !isBackgroundNode(c, col.width, col.height) && !isDecorativeNode(c))
+      colKids.sort((a, b) => nY(a) - nY(b))
+      let colY = 0
+
+      for (const ck of colKids) {
+        setPos(ck, 0, colY)
+        if (ck.type === 'TEXT') {
+          const txt = ck as TextNode
+          const isHeading = colY === 0 || (typeof txt.fontSize === 'number' && txt.fontSize >= 15) || ck === colKids[0]
+          const fontW = isHeading ? contentW : contentW - 8
+          const th = await reflowTextNode(txt, fontW, vp, log)
+          colY += th + (isHeading ? SPACING.SMALL : 6)
+        } else if ('children' in ck) {
+          doResize(ck, contentW, ck.height)
+          const subH = await reflowNode(ck, vp, contentW, log, true)
+          colY += subH + 6
+        } else {
+          const cw = Math.min(ck.width, contentW)
+          doResize(ck, cw, ck.height)
+          colY += ck.height + 6
+        }
+      }
+
+      const colH = Math.max(colY, 20)
+      doResize(col, contentW, colH)
+      localY += colH + SPACING.NORMAL
+    } else if (col.type === 'TEXT') {
+      const th = await reflowTextNode(col as TextNode, contentW, vp, log)
+      localY += th + SPACING.SMALL
+    } else {
+      doResize(col, contentW, col.height)
+      localY += col.height + SPACING.NORMAL
+    }
+  }
+
+  // 3. Dividers
+  for (const div of dividerNodes) {
+    setPos(div, baseX, localY)
+    doResize(div, contentW, Math.min(div.height, 2))
+    localY += Math.min(div.height, 2) + SPACING.NORMAL
+  }
+
+  // 4. Social Icons (Row)
+  if (socialNodes.length > 0) {
+    let iconX = baseX
+    let maxIconH = 24
+    for (const s of socialNodes) {
+      const sw = Math.min(s.width, 36)
+      const sh = Math.min(s.height, 36)
+      maxIconH = Math.max(maxIconH, sh)
+      if (iconX + sw > baseX + contentW) {
+        iconX = baseX
+        localY += maxIconH + SPACING.SMALL
+      }
+      setPos(s, iconX, localY)
+      doResize(s, sw, sh)
+      iconX += sw + SPACING.SMALL
+    }
+    localY += maxIconH + SPACING.NORMAL
+  }
+
+  // 5. Copyright / Legal
+  for (const cp of copyrightNodes) {
+    setPos(cp, baseX, localY)
+    if (cp.type === 'TEXT') {
+      const cph = await reflowTextNode(cp as TextNode, contentW, vp, log)
+      localY += cph + SPACING.SMALL
+    } else {
+      doResize(cp, Math.min(cp.width, contentW), cp.height)
+      localY += cp.height + SPACING.SMALL
+    }
+  }
+
+  const finalH = localY + vp.padding
+  doResize(fr, containerW, finalH)
+  preserveCardCornerRadius(fr, containerW, finalH)
+
+  for (const bg of bgNodes) {
+    setPos(bg, 0, 0)
+    doResize(bg, containerW, finalH)
+    preserveCardCornerRadius(bg, containerW, finalH)
+    try { fr.insertChild(0, bg) } catch (_) {}
+  }
+
+  log.push(`"${node.name}" [FOOTER]: reflowed into vertical flow (${containerW}×${finalH}px)`)
+  return finalH
+}
+
+// ============================================================
 // TRANSFORMER: SINGLE COLUMN (Universal)
 // ============================================================
 
@@ -2807,12 +3157,15 @@ async function transformSingleColumn(
   const contentW = Math.max(10, containerW - ownPaddingL - ownPaddingR)
   const baseX = ownPaddingL
 
-  // Sort by original Y (then X for same-level items)
-  fgKids.sort((a, b) => {
-    const dy = nY(a) - nY(b)
-    if (Math.abs(dy) > 10) return dy
-    return nX(a) - nX(b)
-  })
+  // Sort by columns if multi-column desktop structure, or sequentially by Y
+  const orderedKids = clusterKidsIntoColumns(fgKids, fr.width)
+  if (orderedKids === fgKids) {
+    orderedKids.sort((a, b) => {
+      const dy = nY(a) - nY(b)
+      if (Math.abs(dy) > 10) return dy
+      return nX(a) - nX(b)
+    })
+  }
 
   // Detect original alignment of children relative to the DESKTOP container
   const alignment = detectAlignmentIntent(fgKids, fr.width)
@@ -2829,7 +3182,15 @@ async function transformSingleColumn(
 
   let localY = isCard ? cardPad : (isNestedChild ? 0 : vp.padding)
 
-  for (const kid of fgKids) {
+  for (const kid of orderedKids) {
+    if (isDecorativeNode(kid)) {
+      // Decorative elements remain absolute and do not push vertical flow
+      const decorW = Math.min(kid.width, contentW)
+      const decorX = Math.max(0, Math.min(nX(kid), containerW - decorW))
+      setPos(kid, decorX, Math.max(0, Math.min(nY(kid), localY)))
+      continue
+    }
+
     const kidAlign = getChildAlignment(kid, fr.width, alignment)
 
     if (kid.type === 'TEXT') {
@@ -2938,9 +3299,9 @@ async function transformSingleColumn(
 
       doResize(kid, targetCardW, kid.height)
       const h = await reflowNode(kid, vp, targetCardW, log, true)
-      const fgSubKids = visibleChildren(kid).filter(c => !isBackgroundNode(c, kid.width, kid.height))
+      const fgSubKids = visibleChildren(kid).filter(c => !isBackgroundNode(c, kid.width, kid.height) && !isDecorativeNode(c))
       const maxSubBottom = fgSubKids.length > 0 ? Math.max(...fgSubKids.map(c => nY(c) + c.height)) : 0
-      const actualH = Math.max(h, maxSubBottom + 8, 20)
+      const actualH = Math.max(h, maxSubBottom + (isCard ? 14 : 0), 20)
 
       doResize(kid, targetCardW, actualH)
       preserveCardCornerRadius(kid, targetCardW, actualH)
@@ -3004,9 +3365,22 @@ async function reflowNode(
     return reflowTextNode(node as TextNode, parentW, vp, log)
   }
 
+  if (isImageNode(node)) {
+    const origW = Math.max(1, node.width)
+    const origH = Math.max(1, node.height)
+    const aspect = origH / origW
+    const w = Math.min(origW, parentW)
+    const maxH = Math.round(vp.width * 0.85)
+    const h = Math.min(Math.round(w * aspect), maxH)
+    doResize(node, w, h)
+    preserveCardCornerRadius(node, w, h)
+    return h
+  }
+
   if (!('children' in node)) {
-    // Non-container, non-text: just resize to fit
-    const w = Math.min(node.width, parentW)
+    // Non-container, non-text: resize to fit
+    const isDivider = node.height <= 4 && node.width >= parentW * 0.40
+    const w = isDivider ? parentW : Math.min(node.width, parentW)
     doResize(node, w, node.height)
     return node.height
   }
@@ -3043,6 +3417,9 @@ async function reflowNode(
       const navRes = await transformNavigationNode(node, vp, log)
       return navRes.height
     }
+
+    case 'FOOTER':
+      return transformFooterLayout(node, vp, log, parentW)
 
     case 'TABLE':
       return transformTableNode(node, vp, log)
@@ -3116,16 +3493,19 @@ function auditAndFixOffFrameContent(clone: FrameNode, log: string[]): void {
     )
     if (fgKids.length === 0) return
 
-    const minY = Math.min(...fgKids.map(c => nY(c)))
-    if (minY < 0) {
+    const flowKids = fgKids.filter(c => !isDecorativeNode(c))
+    if (flowKids.length === 0) return
+
+    const minY = Math.min(...flowKids.map(c => nY(c)))
+    if (minY < -4) {
       const shiftY = Math.abs(minY) + 8
-      for (const c of fgKids) setPos(c, nX(c), nY(c) + shiftY)
+      for (const c of flowKids) setPos(c, nX(c), nY(c) + shiftY)
       fixCount++
     }
 
-    const maxChildBottom = Math.max(...fgKids.map(c => nY(c) + c.height))
-    if (maxChildBottom > frame.height) {
-      const newH = maxChildBottom + 16
+    const maxChildBottom = Math.max(...flowKids.map(c => nY(c) + c.height))
+    if (maxChildBottom > frame.height + 40) {
+      const newH = Math.min(maxChildBottom + 16, 2500)
       doResize(frame, frame.width, newH)
       for (const c of safeAllChildren(frame)) {
         if (isBackgroundNode(c, frame.width, newH)) {
@@ -3162,16 +3542,45 @@ function validateAndClampLayout(clone: FrameNode, vp: RVP, log: string[]): void 
   function checkNode(node: SceneNode, maxW: number): void {
     if (!isNodeValidAndVisible(node)) return
     try {
-      const x = nX(node)
-      const w = node.width
+      let x = nX(node)
+      let w = node.width
 
+      // 1. Negative X: move to 0
       if (x < 0) {
         setPos(node, 0, nY(node))
+        x = 0
         clampCount++
       }
+
+      // 2. Off-canvas to the right: node is completely outside the parent frame (e.g. desktop x=900)
+      if (x >= maxW) {
+        const targetX = isBackgroundNode(node, maxW, node.height) ? 0 : vp.padding
+        setPos(node, targetX, nY(node))
+        x = targetX
+        clampCount++
+      }
+
+      // 3. Node width exceeds container width
+      if (w > maxW) {
+        const newW = maxW
+        doResize(node, newW, node.height)
+        w = newW
+        setPos(node, 0, nY(node))
+        x = 0
+        clampCount++
+      }
+
+      // 4. Node overflows the right edge: x + w > maxW
       if (x + w > maxW + 4) {
-        const allowedW = Math.max(10, maxW - Math.max(0, x))
-        doResize(node, allowedW, node.height)
+        if (w <= maxW) {
+          const shiftX = Math.max(0, maxW - w)
+          setPos(node, shiftX, nY(node))
+          x = shiftX
+        } else {
+          const allowedW = Math.max(10, maxW - x)
+          doResize(node, allowedW, node.height)
+          w = allowedW
+        }
         clampCount++
       }
 
@@ -3193,7 +3602,7 @@ function validateAndClampLayout(clone: FrameNode, vp: RVP, log: string[]): void 
   } catch (_) {}
 
   if (clampCount > 0) {
-    log.push(`Validation: ${clampCount} elements clamped to mobile viewport`)
+    log.push(`Validation: ${clampCount} elements reflowed & clamped to mobile viewport`)
   }
 }
 
@@ -3613,6 +4022,9 @@ export async function applyResponsiveEngine(
           hasNavTransformed = true
           break
         }
+        case 'FOOTER':
+          sectionH = await transformFooterLayout(section, vp, log, vp.width)
+          break
         case 'TABLE':
           sectionH = await transformTableNode(section, vp, log)
           break
@@ -3628,14 +4040,14 @@ export async function applyResponsiveEngine(
           break
       }
 
-      // Safety: strictly wrap section height to fit its children (both shrink and grow)
-      if (isValidFigmaNode(activeSection) && 'children' in activeSection) {
+      // Safety: wrap section height to fit its flow children (ignore specialized navigation/footer and decorative nodes)
+      if (strategy !== 'NAVIGATION' && strategy !== 'FOOTER' && isValidFigmaNode(activeSection) && 'children' in activeSection) {
         const fr = activeSection as FrameNode
-        const fgKids = safeChildren(fr).filter(
-          c => !isBackgroundNode(c, fr.width, fr.height) && !isBackgroundNode(c, origW, origH)
+        const flowKids = safeChildren(fr).filter(
+          c => !isBackgroundNode(c, fr.width, fr.height) && !isBackgroundNode(c, origW, origH) && !isDecorativeNode(c)
         )
-        if (fgKids.length > 0) {
-          const maxChildBottom = Math.max(...fgKids.map(c => nY(c) + c.height))
+        if (flowKids.length > 0) {
+          const maxChildBottom = Math.max(...flowKids.map(c => nY(c) + c.height))
           const minPad = isAnnouncementBar(fr) ? 0 : 16
           const contentDrivenH = Math.max(maxChildBottom + minPad, 24)
           sectionH = contentDrivenH
@@ -3675,7 +4087,7 @@ export async function applyResponsiveEngine(
     : origH
 
   clone.resize(vp.width, finalPageHeight)
-  clone.clipsContent = true
+  clone.clipsContent = false
 
   log.push(`Canvas: ${origW}×${origH}px → ${vp.width}×${finalPageHeight}px`)
 

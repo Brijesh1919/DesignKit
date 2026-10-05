@@ -43,6 +43,16 @@ import {
   getResponsivePreview,
   applyResponsiveTransform,
 } from './figma/responsive'
+import {
+  collectTextNodes,
+  applyTextCorrection,
+  applyBatchCorrections,
+  setReviewHighlights,
+  clearReviewHighlights,
+  setFocusedWordHighlight,
+  loadFontsForTextNode,
+} from './figma/textQA'
+
 
 // -------------------------------------------------------
 // Open plugin UI (900×675 ≈ 4:3)
@@ -74,6 +84,12 @@ figma.on('selectionchange', () => {
     payload: getFrameContrastAnalysis(figma.currentPage.selection),
   })
 })
+
+// Clean up temporary Review Mode highlights when the plugin closes
+figma.on('close', () => {
+  clearReviewHighlights()
+})
+
 
 // -------------------------------------------------------
 // Message router — handle all requests from the UI
@@ -435,6 +451,100 @@ figma.ui.on('message', async (msg: UIMessage) => {
           type: 'DESIGN_TOKENS_DATA',
           payload: data,
         })
+        break
+      }
+
+      // ---- Text QA ----
+      case 'COLLECT_TEXT_NODES': {
+        const response = collectTextNodes(figma.currentPage.selection)
+        figma.ui.postMessage({
+          type: 'COLLECTED_TEXT_NODES',
+          payload: response,
+        })
+        break
+      }
+
+      case 'TEXT_QA_APPLY_CORRECTION': {
+        const success = await applyTextCorrection(msg.payload)
+        figma.ui.postMessage({
+          type: 'TEXT_QA_CORRECTION_APPLIED',
+          payload: {
+            issueId: msg.payload.issueId,
+            nodeId: msg.payload.nodeId,
+            success,
+          },
+        })
+        figma.notify('✅ Correction applied')
+        break
+      }
+
+      case 'TEXT_QA_APPLY_BATCH_CORRECTIONS': {
+        const count = await applyBatchCorrections(msg.payload)
+        figma.ui.postMessage({
+          type: 'TEXT_QA_BATCH_APPLIED',
+          payload: { count, success: true },
+        })
+        figma.notify(`✅ Applied ${count} safe fix${count !== 1 ? 'es' : ''}`)
+        break
+      }
+
+      case 'TEXT_QA_SET_HIGHLIGHTS': {
+        await setReviewHighlights(msg.payload)
+        break
+      }
+
+      case 'TEXT_QA_CLEAR_HIGHLIGHTS': {
+        clearReviewHighlights()
+        break
+      }
+
+      case 'TEXT_QA_FOCUS_WORD': {
+        const node = figma.getNodeById(msg.payload.nodeId)
+        if (node && node.type === 'TEXT') {
+          const textNode = node as TextNode
+
+          let start = msg.payload.start
+          let end = msg.payload.end
+          if (msg.payload.original) {
+            if (textNode.characters.slice(start, end) !== msg.payload.original) {
+              const idx = textNode.characters.indexOf(msg.payload.original)
+              if (idx !== -1) {
+                start = idx
+                end = idx + msg.payload.original.length
+              }
+            }
+          }
+
+          // 1. Ensure fonts are loaded first
+          await loadFontsForTextNode(textNode)
+
+          // 2. Create the visual focused word highlight over the specific word
+          await setFocusedWordHighlight(
+            textNode,
+            msg.payload.original,
+            msg.payload.issueType ?? 'SPELLING',
+            start,
+            end
+          )
+
+          // 3. Select node and scroll into view
+          figma.currentPage.selection = [textNode]
+          figma.viewport.scrollAndZoomIntoView([textNode])
+
+          // 4. Set character range selection in Figma LAST so cursor/range stays focused on that exact word
+          try {
+            const len = textNode.characters.length
+            const safeStart = Math.max(0, Math.min(start, len))
+            const safeEnd = Math.max(safeStart, Math.min(end, len))
+            figma.currentPage.selectedTextRange = {
+              node: textNode,
+              start: safeStart,
+              end: safeEnd,
+            }
+          } catch (err) {
+            console.warn('[DesignKit TextQA] selectedTextRange error:', err)
+          }
+        }
         break
       }
 
