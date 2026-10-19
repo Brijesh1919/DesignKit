@@ -5,15 +5,35 @@
 
 import type { UIMessage } from '../shared/types'
 import { getSelectionInfo } from './figma/utilities'
-import { createColorStyles, applyColorToSelection, getFrameContrastAnalysis } from './figma/colors'
-import { createTextStyles } from './figma/typography'
+import {
+  createColorStyles,
+  applyColorToSelection,
+  getFrameContrastAnalysis,
+  getExtractedColorsData,
+} from './figma/colors'
+import {
+  createTextStyles,
+  createCustomTextStyle,
+  getTextStyleExtractorData,
+  applyStyleToText,
+  applyLineHeightToSelection,
+} from './figma/typography'
 import {
   getSpacingInfo,
   applySpacing,
   getAutoLayoutAnalysis,
   applyAutoLayout,
+  getGridCheckerAnalysis,
+  applyGridFixes,
+  applyPaddingToSelection,
+  applyAlignmentToSelection,
 } from './figma/layout'
-import { getImageBytes, applyImage } from './figma/images'
+import {
+  getImageBytes,
+  applyImage,
+  applyImageResize,
+  applyImageCrop,
+} from './figma/images'
 import {
   createComponentFromSelection,
   getComponentNamingAnalysis,
@@ -545,6 +565,115 @@ figma.ui.on('message', async (msg: UIMessage) => {
             console.warn('[DesignKit TextQA] selectedTextRange error:', err)
           }
         }
+        break
+      }
+
+      case 'GET_EXTRACTED_COLORS': {
+        const data = getExtractedColorsData(msg.payload?.scope ?? 'selection')
+        figma.ui.postMessage({
+          type: 'EXTRACTED_COLORS_DATA',
+          payload: data,
+        })
+        break
+      }
+
+      case 'GET_GRID_CHECKER_ANALYSIS': {
+        const grid = msg.payload?.grid ?? 8
+        const scope = msg.payload?.scope ?? 'selection'
+        const analysis = getGridCheckerAnalysis(grid, scope)
+        figma.ui.postMessage({
+          type: 'GRID_CHECKER_ANALYSIS',
+          payload: analysis,
+        })
+        break
+      }
+
+      case 'APPLY_GRID_FIXES': {
+        const count = applyGridFixes(msg.payload)
+        figma.notify(`✅ Snapped ${count} property values to grid`)
+        figma.ui.postMessage({
+          type: 'SUCCESS',
+          payload: { message: `Snapped ${count} properties to grid` },
+        })
+        break
+      }
+
+      case 'APPLY_PADDING': {
+        applyPaddingToSelection(msg.payload)
+        figma.notify('✅ Padding applied successfully')
+        figma.ui.postMessage({
+          type: 'SUCCESS',
+          payload: { message: 'Padding updated' },
+        })
+        break
+      }
+
+      case 'APPLY_ALIGNMENT': {
+        const count = applyAlignmentToSelection(msg.payload.alignType)
+        figma.notify(`✅ Aligned ${count} layer${count !== 1 ? 's' : ''}`)
+        figma.ui.postMessage({
+          type: 'SUCCESS',
+          payload: { message: `Aligned ${count} layer${count !== 1 ? 's' : ''}` },
+        })
+        break
+      }
+
+      case 'CREATE_CUSTOM_TEXT_STYLE': {
+        const style = await createCustomTextStyle(msg.payload)
+        figma.notify(`✅ Created style "${style.name}"`)
+        figma.ui.postMessage({
+          type: 'SUCCESS',
+          payload: { message: `Created text style "${style.name}"` },
+        })
+        break
+      }
+
+      case 'GET_TEXT_STYLE_EXTRACTOR_DATA': {
+        const data = getTextStyleExtractorData(msg.payload?.scope ?? 'selection')
+        figma.ui.postMessage({
+          type: 'TEXT_STYLE_EXTRACTOR_DATA',
+          payload: data,
+        })
+        break
+      }
+
+      case 'APPLY_STYLE_TO_TEXT': {
+        applyStyleToText(msg.payload.nodeId, msg.payload.styleId)
+        figma.notify('✅ Style linked to text layer')
+        figma.ui.postMessage({
+          type: 'SUCCESS',
+          payload: { message: 'Style linked to layer' },
+        })
+        break
+      }
+
+      case 'APPLY_LINE_HEIGHT': {
+        const count = await applyLineHeightToSelection(msg.payload)
+        figma.notify(`✅ Updated line height on ${count} text layer${count !== 1 ? 's' : ''}`)
+        figma.ui.postMessage({
+          type: 'SUCCESS',
+          payload: { message: `Updated line height on ${count} layer${count !== 1 ? 's' : ''}` },
+        })
+        break
+      }
+
+      case 'APPLY_IMAGE_RESIZE': {
+        const count = applyImageResize(msg.payload)
+        figma.notify(`✅ Resized ${count} layer${count !== 1 ? 's' : ''}`)
+        figma.ui.postMessage({
+          type: 'SUCCESS',
+          payload: { message: `Resized ${count} layer${count !== 1 ? 's' : ''}` },
+        })
+        break
+      }
+
+      case 'APPLY_IMAGE_CROP': {
+        const count = applyImageCrop(msg.payload)
+        figma.notify(`✅ Aspect ratio updated on ${count} layer${count !== 1 ? 's' : ''}`)
+        figma.ui.postMessage({
+          type: 'SUCCESS',
+          payload: { message: `Adjusted aspect ratio on ${count} layer${count !== 1 ? 's' : ''}` },
+        })
         break
       }
 

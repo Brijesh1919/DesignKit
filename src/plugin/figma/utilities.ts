@@ -24,10 +24,10 @@ export function getSelectionInfo(selection: readonly SceneNode[]): SelectionInfo
     if (node.type === 'TEXT') {
       hasText = true
     }
-    if ('fills' in node) {
+    if ('fills' in node && Array.isArray(node.fills)) {
       const fills = node.fills as ReadonlyArray<Paint>
       for (const fill of fills) {
-        if (fill.type === 'IMAGE') {
+        if (fill && fill.type === 'IMAGE') {
           hasImage = true
         }
       }

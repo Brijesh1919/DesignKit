@@ -40,11 +40,21 @@ export interface CategoryDef {
 const ColorPalette      = lazy(() => import('../tools/colors/ColorPalette'))
 const ColorHarmony      = lazy(() => import('../tools/colors/ColorHarmony'))
 const ContrastChecker   = lazy(() => import('../tools/colors/ContrastChecker'))
+const ColorShades       = lazy(() => import('../tools/colors/ColorShades'))
+const ExtractColors     = lazy(() => import('../tools/colors/ExtractColors'))
 const TypographyScale   = lazy(() => import('../tools/typography/TypographyScale'))
+const TextStyleGenerator = lazy(() => import('../tools/typography/TextStyleGenerator'))
+const TextStyleExtractor = lazy(() => import('../tools/typography/TextStyleExtractor'))
+const LineHeightCalculator = lazy(() => import('../tools/typography/LineHeightCalculator'))
 const SpacingNormalizer = lazy(() => import('../tools/layout/SpacingNormalizer'))
 const AutoLayoutOpt     = lazy(() => import('../tools/layout/AutoLayoutOptimizer'))
+const PaddingTool       = lazy(() => import('../tools/layout/PaddingTool'))
+const AlignmentTool     = lazy(() => import('../tools/layout/AlignmentTool'))
+const GridChecker       = lazy(() => import('../tools/layout/GridChecker'))
 const ImageColorExtractor = lazy(() => import('../tools/images/ImageColorExtractor'))
 const BackgroundRemover = lazy(() => import('../tools/images/BackgroundRemover'))
+const ImageResize       = lazy(() => import('../tools/images/ImageResize'))
+const ImageCrop         = lazy(() => import('../tools/images/ImageCrop'))
 const CreateComponent   = lazy(() => import('../tools/components/CreateComponent'))
 const ComponentNaming   = lazy(() => import('../tools/components/ComponentNaming'))
 const LayerNaming       = lazy(() => import('../tools/components/LayerNaming'))
@@ -103,7 +113,8 @@ export const CATEGORIES: CategoryDef[] = [
         description: 'Fine-tune individual shades of a color',
         keywords: ['shades', 'tints', 'darken', 'lighten'],
         categoryId: 'colors',
-        implemented: false,
+        implemented: true,
+        component: ColorShades,
       },
       {
         id: 'extract-colors',
@@ -111,7 +122,8 @@ export const CATEGORIES: CategoryDef[] = [
         description: 'Extract all colors used on the current page',
         keywords: ['extract', 'document', 'audit', 'page colors'],
         categoryId: 'colors',
-        implemented: false,
+        implemented: true,
+        component: ExtractColors,
       },
     ],
   },
@@ -136,7 +148,8 @@ export const CATEGORIES: CategoryDef[] = [
         description: 'Create custom text styles with precision controls',
         keywords: ['text', 'style', 'font', 'weight', 'size'],
         categoryId: 'typography',
-        implemented: false,
+        implemented: true,
+        component: TextStyleGenerator,
       },
       {
         id: 'text-style-extractor',
@@ -144,7 +157,8 @@ export const CATEGORIES: CategoryDef[] = [
         description: 'List and audit all text styles in the document',
         keywords: ['extract', 'audit', 'text', 'styles'],
         categoryId: 'typography',
-        implemented: false,
+        implemented: true,
+        component: TextStyleExtractor,
       },
       {
         id: 'line-height',
@@ -152,7 +166,8 @@ export const CATEGORIES: CategoryDef[] = [
         description: 'Calculate optimal line heights for any font size',
         keywords: ['line height', 'leading', 'spacing'],
         categoryId: 'typography',
-        implemented: false,
+        implemented: true,
+        component: LineHeightCalculator,
       },
     ],
   },
@@ -186,7 +201,8 @@ export const CATEGORIES: CategoryDef[] = [
         description: 'Set uniform or asymmetric padding on frames',
         keywords: ['padding', 'inset', 'frame', 'space'],
         categoryId: 'layout',
-        implemented: false,
+        implemented: true,
+        component: PaddingTool,
       },
       {
         id: 'alignment-tool',
@@ -194,7 +210,8 @@ export const CATEGORIES: CategoryDef[] = [
         description: 'Advanced alignment and distribution controls',
         keywords: ['align', 'distribute', 'center', 'spacing'],
         categoryId: 'layout',
-        implemented: false,
+        implemented: true,
+        component: AlignmentTool,
       },
       {
         id: 'grid-checker',
@@ -202,7 +219,8 @@ export const CATEGORIES: CategoryDef[] = [
         description: 'Highlight elements that don\'t align to the grid',
         keywords: ['grid', '8pt', 'alignment', 'check', 'audit'],
         categoryId: 'layout',
-        implemented: false,
+        implemented: true,
+        component: GridChecker,
       },
     ],
   },
@@ -236,7 +254,8 @@ export const CATEGORIES: CategoryDef[] = [
         description: 'Resize selected image layers precisely',
         keywords: ['resize', 'scale', 'image', 'dimensions'],
         categoryId: 'images',
-        implemented: false,
+        implemented: true,
+        component: ImageResize,
       },
       {
         id: 'image-crop',
@@ -244,7 +263,8 @@ export const CATEGORIES: CategoryDef[] = [
         description: 'Crop images to exact dimensions',
         keywords: ['crop', 'trim', 'image'],
         categoryId: 'images',
-        implemented: false,
+        implemented: true,
+        component: ImageCrop,
       },
     ],
   },

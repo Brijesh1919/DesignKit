@@ -11,9 +11,9 @@ export async function getImageBytes(
   let target: SceneNode | null = null
 
   for (const node of selection) {
-    if ('fills' in node) {
+    if ('fills' in node && Array.isArray((node as GeometryMixin).fills)) {
       const fills = (node as GeometryMixin).fills as ReadonlyArray<Paint>
-      if (fills.some(f => f.type === 'IMAGE')) {
+      if (fills.some(f => f && f.type === 'IMAGE')) {
         target = node
         break
       }
@@ -72,3 +72,85 @@ export async function applyImage(payload: ApplyImagePayload): Promise<void> {
 
   ;(node as GeometryMixin).fills = [fill]
 }
+
+// -------------------------------------------------------
+// Resize selected layers with optional aspect ratio lock
+// -------------------------------------------------------
+export function applyImageResize(
+  payload: import('../../shared/types').ApplyImageResizePayload
+): number {
+  const selection = figma.currentPage.selection
+  if (selection.length === 0) {
+    throw new Error('Please select at least one layer to resize')
+  }
+
+  let resizedCount = 0
+  for (const node of selection) {
+    if ('resize' in node) {
+      let targetW = payload.width
+      let targetH = payload.height
+
+      if (payload.lockAspect && 'width' in node && 'height' in node) {
+        const curW = (node as any).width || 1
+        const curH = (node as any).height || 1
+        const ratio = curW / curH
+        if (targetW > 0 && targetH <= 0) {
+          targetH = Math.round(targetW / ratio)
+        } else if (targetH > 0 && targetW <= 0) {
+          targetW = Math.round(targetH * ratio)
+        }
+      }
+
+      if (targetW > 0 && targetH > 0) {
+        (node as LayoutMixin).resize(targetW, targetH)
+        resizedCount++
+      }
+    }
+  }
+
+  return resizedCount
+}
+
+// -------------------------------------------------------
+// Crop/Aspect ratio adjustment for selected image layers
+// -------------------------------------------------------
+export function applyImageCrop(
+  payload: import('../../shared/types').ApplyImageCropPayload
+): number {
+  const selection = figma.currentPage.selection
+  if (selection.length === 0) {
+    throw new Error('Please select at least one layer to adjust aspect/crop')
+  }
+
+  let count = 0
+  for (const node of selection) {
+    // 1. If it has image fills, set the scaleMode ('FILL' or 'FIT')
+    if ('fills' in node && Array.isArray((node as GeometryMixin).fills)) {
+      const fills = (node as GeometryMixin).fills as ReadonlyArray<Paint>
+      const newFills = fills.map(f => {
+        if (f.type === 'IMAGE') {
+          return {
+            ...f,
+            scaleMode: payload.mode === 'FIT' ? 'FIT' : 'FILL',
+          }
+        }
+        return f
+      })
+      ;(node as GeometryMixin).fills = newFills
+    }
+
+    // 2. Adjust dimensions to the target ratio
+    if ('resize' in node && 'width' in node && 'height' in node) {
+      const curW = (node as any).width
+      const targetRatio = payload.ratioWidth / payload.ratioHeight
+      const newH = Math.round(curW / targetRatio)
+      if (newH > 0 && curW > 0) {
+        (node as LayoutMixin).resize(curW, newH)
+        count++
+      }
+    }
+  }
+
+  return count
+}
+

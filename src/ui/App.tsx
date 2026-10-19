@@ -3,6 +3,7 @@ import { Header } from './components/Layout/Header'
 import { Sidebar } from './components/Layout/Sidebar'
 import { Dashboard } from './tools/Dashboard'
 import { ComingSoon } from './tools/ComingSoon'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import {
   CATEGORIES,
   findTool,
@@ -239,21 +240,27 @@ export const App: React.FC = () => {
               </div>
             }
           >
-            {state.activeToolId ? (
-              <ToolViewRouter
-                key={state.activeToolId}
-                toolId={state.activeToolId}
-                state={state}
-                onSuccess={onSuccess}
-                onError={onError}
-              />
-            ) : (
-              <Dashboard
-                selection={state.selection}
-                recentToolIds={state.recentToolIds}
-                onToolSelect={handleToolSelect}
-              />
-            )}
+            <ErrorBoundary
+              key={state.activeToolId || 'dashboard'}
+              fallbackTitle="Tool Error"
+              onReset={() => dispatch({ type: 'SET_TOOL', payload: state.activeToolId || '' })}
+            >
+              {state.activeToolId ? (
+                <ToolViewRouter
+                  key={state.activeToolId}
+                  toolId={state.activeToolId}
+                  state={state}
+                  onSuccess={onSuccess}
+                  onError={onError}
+                />
+              ) : (
+                <Dashboard
+                  selection={state.selection}
+                  recentToolIds={state.recentToolIds}
+                  onToolSelect={handleToolSelect}
+                />
+              )}
+            </ErrorBoundary>
           </Suspense>
         </main>
       </div>

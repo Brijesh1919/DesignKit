@@ -109,6 +109,128 @@ export interface FrameContrastAnalysis {
   items: FrameContrastItem[];
 }
 
+// --------------- Extract Colors Types ---------------
+export interface ExtractedColorItem {
+  hex: string;
+  rgb: { r: number; g: number; b: number };
+  count: number;
+  isDark: boolean;
+  sources: string[];
+}
+
+export interface ExtractColorsData {
+  colors: ExtractedColorItem[];
+  totalLayersScanned: number;
+  scope: 'selection' | 'page';
+}
+
+// --------------- 8pt Grid Checker Types ---------------
+export interface GridOffProperty {
+  property: string;
+  value: number;
+  diff: number;
+  rounded: number;
+}
+
+export interface GridCheckerItem {
+  nodeId: string;
+  nodeName: string;
+  offProperties: GridOffProperty[];
+}
+
+export interface GridCheckerAnalysis {
+  items: GridCheckerItem[];
+  totalScanned: number;
+  grid: number;
+}
+
+export interface ApplyGridFixPayload {
+  fixes: Array<{
+    nodeId: string;
+    properties: Record<string, number>;
+  }>;
+}
+
+// --------------- Padding Tool Types ---------------
+export interface ApplyPaddingPayload {
+  nodeId?: string;
+  paddingTop: number;
+  paddingRight: number;
+  paddingBottom: number;
+  paddingLeft: number;
+}
+
+// --------------- Alignment Tool Types ---------------
+export type AlignmentType =
+  | 'LEFT'
+  | 'CENTER'
+  | 'RIGHT'
+  | 'TOP'
+  | 'MIDDLE'
+  | 'BOTTOM'
+  | 'DISTRIBUTE_HORIZONTALLY'
+  | 'DISTRIBUTE_VERTICALLY'
+  | 'SPACE_EVENLY_HORIZONTAL'
+  | 'SPACE_EVENLY_VERTICAL';
+
+export interface ApplyAlignmentPayload {
+  alignType: AlignmentType;
+}
+
+// --------------- Custom Text Style Generator Types ---------------
+export interface CreateCustomTextStylePayload {
+  name: string;
+  fontSize: number;
+  lineHeight?: number;
+  fontWeight: number;
+  letterSpacing?: number;
+  fontFamily?: string;
+}
+
+// --------------- Text Style Extractor Types ---------------
+export interface LocalTextStyleInfo {
+  id: string;
+  name: string;
+  fontSize: number;
+  fontFamily: string;
+  fontWeight: string;
+  lineHeight: string;
+  usageCount: number;
+}
+
+export interface UnstyledTextItem {
+  nodeId: string;
+  nodeName: string;
+  textSnippet: string;
+  fontSize: number;
+  fontFamily: string;
+}
+
+export interface TextStyleExtractorData {
+  localStyles: LocalTextStyleInfo[];
+  unstyledNodes: UnstyledTextItem[];
+}
+
+// --------------- Line Height Calculator Types ---------------
+export interface ApplyLineHeightPayload {
+  lineHeight: number;
+  unit: 'PIXELS' | 'PERCENT';
+}
+
+// --------------- Image Resize & Crop Types ---------------
+export interface ApplyImageResizePayload {
+  width: number;
+  height: number;
+  lockAspect?: boolean;
+}
+
+export interface ApplyImageCropPayload {
+  ratioWidth: number;
+  ratioHeight: number;
+  mode: 'FILL' | 'FIT';
+}
+
+
 // --------------- Components Types ---------------
 
 export interface CreateComponentPayload {
@@ -494,7 +616,19 @@ export type UIMessage =
   | { type: 'TEXT_QA_APPLY_BATCH_CORRECTIONS'; payload: ApplyBatchCorrectionsPayload }
   | { type: 'TEXT_QA_SET_HIGHLIGHTS'; payload: SetReviewHighlightsPayload }
   | { type: 'TEXT_QA_CLEAR_HIGHLIGHTS' }
-  | { type: 'TEXT_QA_FOCUS_WORD'; payload: { nodeId: string; start: number; end: number; original: string; issueType?: TextIssueType } };
+  | { type: 'TEXT_QA_FOCUS_WORD'; payload: { nodeId: string; start: number; end: number; original: string; issueType?: TextIssueType } }
+  // Additional Tools
+  | { type: 'GET_EXTRACTED_COLORS'; payload?: { scope?: 'selection' | 'page' } }
+  | { type: 'GET_GRID_CHECKER_ANALYSIS'; payload?: { grid?: number; scope?: 'selection' | 'page' } }
+  | { type: 'APPLY_GRID_FIXES'; payload: ApplyGridFixPayload }
+  | { type: 'APPLY_PADDING'; payload: ApplyPaddingPayload }
+  | { type: 'APPLY_ALIGNMENT'; payload: ApplyAlignmentPayload }
+  | { type: 'CREATE_CUSTOM_TEXT_STYLE'; payload: CreateCustomTextStylePayload }
+  | { type: 'GET_TEXT_STYLE_EXTRACTOR_DATA'; payload?: { scope?: 'selection' | 'page' } }
+  | { type: 'APPLY_STYLE_TO_TEXT'; payload: { nodeId: string; styleId: string } }
+  | { type: 'APPLY_LINE_HEIGHT'; payload: ApplyLineHeightPayload }
+  | { type: 'APPLY_IMAGE_RESIZE'; payload: ApplyImageResizePayload }
+  | { type: 'APPLY_IMAGE_CROP'; payload: ApplyImageCropPayload };
 
 
 // Messages sent from the plugin sandbox → UI iframe
@@ -528,5 +662,9 @@ export type PluginMessage =
   // Text QA
   | { type: 'COLLECTED_TEXT_NODES'; payload: CollectTextNodesResponse }
   | { type: 'TEXT_QA_CORRECTION_APPLIED'; payload: { issueId: string; nodeId: string; success: boolean } }
-  | { type: 'TEXT_QA_BATCH_APPLIED'; payload: { count: number; success: boolean } };
+  | { type: 'TEXT_QA_BATCH_APPLIED'; payload: { count: number; success: boolean } }
+  // Additional Tools
+  | { type: 'EXTRACTED_COLORS_DATA'; payload: ExtractColorsData }
+  | { type: 'GRID_CHECKER_ANALYSIS'; payload: GridCheckerAnalysis }
+  | { type: 'TEXT_STYLE_EXTRACTOR_DATA'; payload: TextStyleExtractorData };
 

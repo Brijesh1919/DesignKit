@@ -174,3 +174,111 @@ export function getFrameContrastAnalysis(selection: readonly SceneNode[]): Frame
   }
 }
 
+// -------------------------------------------------------
+// Extract all unique colors used across selection or page
+// -------------------------------------------------------
+import type { ExtractColorsData, ExtractedColorItem } from '../../shared/types'
+
+export function getExtractedColorsData(
+  scope: 'selection' | 'page' = 'selection',
+  selection: readonly SceneNode[] = figma.currentPage.selection
+): ExtractColorsData {
+  const rootNodes = (scope === 'selection' && selection && selection.length > 0)
+    ? selection
+    : figma.currentPage.children
+
+  const colorMap = new Map<string, {
+    hex: string
+    rgb: { r: number; g: number; b: number }
+    count: number
+    sources: Set<string>
+  }>()
+
+  let totalLayersScanned = 0
+
+  function scanNode(node: SceneNode) {
+    if ('visible' in node && node.visible === false) return
+    totalLayersScanned++
+
+    // Fills
+    if ('fills' in node && Array.isArray(node.fills)) {
+      for (const paint of node.fills as Paint[]) {
+        if (paint && paint.visible !== false && paint.type === 'SOLID') {
+          const hex = figmaRgbToHex(paint.color.r, paint.color.g, paint.color.b)
+          const existing = colorMap.get(hex)
+          if (existing) {
+            existing.count++
+            existing.sources.add(node.type)
+          } else {
+            colorMap.set(hex, {
+              hex,
+              rgb: {
+                r: Math.round(paint.color.r * 255),
+                g: Math.round(paint.color.g * 255),
+                b: Math.round(paint.color.b * 255),
+              },
+              count: 1,
+              sources: new Set([node.type]),
+            })
+          }
+        }
+      }
+    }
+
+    // Strokes
+    if ('strokes' in node && Array.isArray(node.strokes)) {
+      for (const paint of node.strokes as Paint[]) {
+        if (paint && paint.visible !== false && paint.type === 'SOLID') {
+          const hex = figmaRgbToHex(paint.color.r, paint.color.g, paint.color.b)
+          const existing = colorMap.get(hex)
+          if (existing) {
+            existing.count++
+            existing.sources.add(`${node.type} (Stroke)`)
+          } else {
+            colorMap.set(hex, {
+              hex,
+              rgb: {
+                r: Math.round(paint.color.r * 255),
+                g: Math.round(paint.color.g * 255),
+                b: Math.round(paint.color.b * 255),
+              },
+              count: 1,
+              sources: new Set([`${node.type} (Stroke)`]),
+            })
+          }
+        }
+      }
+    }
+
+    if ('children' in node) {
+      for (const child of (node as ChildrenMixin).children) {
+        scanNode(child)
+      }
+    }
+  }
+
+  for (const node of rootNodes) {
+    scanNode(node)
+  }
+
+  const colors: ExtractedColorItem[] = Array.from(colorMap.values())
+    .map(c => {
+      const lum = 0.299 * (c.rgb.r / 255) + 0.587 * (c.rgb.g / 255) + 0.114 * (c.rgb.b / 255)
+      return {
+        hex: c.hex,
+        rgb: c.rgb,
+        count: c.count,
+        isDark: lum < 0.5,
+        sources: Array.from(c.sources),
+      }
+    })
+    .sort((a, b) => b.count - a.count)
+
+  return {
+    colors,
+    totalLayersScanned,
+    scope,
+  }
+}
+
+

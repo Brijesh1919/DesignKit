@@ -130,3 +130,182 @@ export async function createTextStyles(styles: TextStyleDef[]): Promise<number> 
 
   return created
 }
+
+// -------------------------------------------------------
+// Create a single custom text style
+// -------------------------------------------------------
+export async function createCustomTextStyle(
+  payload: import('../../shared/types').CreateCustomTextStylePayload
+): Promise<TextStyle> {
+  const fontName = await loadFontSafely(
+    payload.fontFamily || 'Inter',
+    payload.fontWeight || 400
+  )
+
+  const existing = figma.getLocalTextStyles()
+  let style = existing.find(s => s.name === payload.name)
+  if (!style) {
+    style = figma.createTextStyle()
+    style.name = payload.name
+  }
+
+  style.fontName = fontName
+  style.fontSize = payload.fontSize
+  if (payload.lineHeight && payload.lineHeight > 0) {
+    style.lineHeight = { value: payload.lineHeight, unit: 'PIXELS' }
+  } else {
+    style.lineHeight = { unit: 'AUTO' }
+  }
+
+  if (typeof payload.letterSpacing === 'number') {
+    style.letterSpacing = { value: payload.letterSpacing, unit: 'PIXELS' }
+  }
+
+  return style
+}
+
+// -------------------------------------------------------
+// Extract text styles & unstyled layers across selection / page
+// -------------------------------------------------------
+export function getTextStyleExtractorData(
+  scope: 'selection' | 'page' = 'selection'
+): import('../../shared/types').TextStyleExtractorData {
+  let targetNodes: SceneNode[] = []
+  if (scope === 'selection' && figma.currentPage.selection.length > 0) {
+    targetNodes = [...figma.currentPage.selection]
+  } else {
+    targetNodes = [...figma.currentPage.children]
+  }
+
+  const allTextNodes: TextNode[] = []
+  function collectText(node: SceneNode) {
+    if (node.type === 'TEXT') {
+      allTextNodes.push(node as TextNode)
+    }
+    if ('children' in node) {
+      for (const child of (node as ChildrenMixin).children) {
+        collectText(child)
+      }
+    }
+  }
+
+  for (const n of targetNodes) {
+    collectText(n)
+  }
+
+  // Count usage of local styles
+  const localStyles = figma.getLocalTextStyles()
+  const usageMap = new Map<string, number>()
+  for (const t of allTextNodes) {
+    if (t.textStyleId && typeof t.textStyleId === 'string' && t.textStyleId !== '') {
+      usageMap.set(t.textStyleId, (usageMap.get(t.textStyleId) || 0) + 1)
+    }
+  }
+
+  const localStylesData: import('../../shared/types').LocalTextStyleInfo[] = localStyles.map(s => {
+    let lh = 'Auto'
+    if (s.lineHeight.unit === 'PIXELS') {
+      lh = `${Math.round(s.lineHeight.value)}px`
+    } else if (s.lineHeight.unit === 'PERCENT') {
+      lh = `${Math.round(s.lineHeight.value)}%`
+    }
+    return {
+      id: s.id,
+      name: s.name,
+      fontSize: s.fontSize,
+      fontFamily: s.fontName ? s.fontName.family : 'Inter',
+      fontWeight: s.fontName ? s.fontName.style : 'Regular',
+      lineHeight: lh,
+      usageCount: usageMap.get(s.id) || 0,
+    }
+  })
+
+  const unstyledNodes: import('../../shared/types').UnstyledTextItem[] = []
+  for (const t of allTextNodes) {
+    if (!t.textStyleId || t.textStyleId === '') {
+      const family = t.fontName !== figma.mixed ? (t.fontName as FontName).family : 'Mixed'
+      const size = typeof t.fontSize === 'number' ? t.fontSize : 0
+      unstyledNodes.push({
+        nodeId: t.id,
+        nodeName: t.name,
+        textSnippet: t.characters.slice(0, 36).trim() || '(Empty text)',
+        fontSize: size,
+        fontFamily: family,
+      })
+    }
+  }
+
+  return {
+    localStyles: localStylesData,
+    unstyledNodes,
+  }
+}
+
+// -------------------------------------------------------
+// Apply a text style to a specific text node
+// -------------------------------------------------------
+export function applyStyleToText(nodeId: string, styleId: string): void {
+  const node = figma.getNodeById(nodeId)
+  if (!node || node.type !== 'TEXT') {
+    throw new Error('Layer is not a text layer or could not be found')
+  }
+  ;(node as TextNode).textStyleId = styleId
+}
+
+// -------------------------------------------------------
+// Apply line height to selected text layers
+// -------------------------------------------------------
+export async function applyLineHeightToSelection(
+  payload: import('../../shared/types').ApplyLineHeightPayload
+): Promise<number> {
+  const selection = figma.currentPage.selection
+  if (selection.length === 0) {
+    throw new Error('Please select at least one text layer or frame containing text')
+  }
+
+  const textNodes: TextNode[] = []
+  function collect(node: SceneNode) {
+    if (node.type === 'TEXT') {
+      textNodes.push(node as TextNode)
+    }
+    if ('children' in node) {
+      for (const child of (node as ChildrenMixin).children) {
+        collect(child)
+      }
+    }
+  }
+
+  for (const n of selection) {
+    collect(n)
+  }
+
+  if (textNodes.length === 0) {
+    throw new Error('No text layers found in current selection')
+  }
+
+  let count = 0
+  for (const text of textNodes) {
+    try {
+      if (text.fontName !== figma.mixed) {
+        await figma.loadFontAsync(text.fontName as FontName)
+      } else {
+        const segments = text.getStyledTextSegments(['fontName'])
+        for (const seg of segments) {
+          await figma.loadFontAsync(seg.fontName)
+        }
+      }
+
+      if (payload.unit === 'PERCENT') {
+        text.lineHeight = { value: payload.lineHeight, unit: 'PERCENT' }
+      } else {
+        text.lineHeight = { value: payload.lineHeight, unit: 'PIXELS' }
+      }
+      count++
+    } catch (err) {
+      console.warn('[DesignKit] Could not set line height for node:', text.name, err)
+    }
+  }
+
+  return count
+}
+
