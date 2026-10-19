@@ -282,7 +282,9 @@ export async function applyLayerCleanup(
 // -------------------------------------------------------
 // 3. STYLE CLEANUP
 // -------------------------------------------------------
-export function getStyleCleanupAnalysis(): StyleCleanupAnalysis {
+export async function getStyleCleanupAnalysis(
+  scope: 'page' | 'document' = 'page'
+): Promise<StyleCleanupAnalysis> {
   const paintStyles = figma.getLocalPaintStyles()
   const textStyles = figma.getLocalTextStyles()
   const effectStyles = figma.getLocalEffectStyles()
@@ -292,27 +294,76 @@ export function getStyleCleanupAnalysis(): StyleCleanupAnalysis {
   const usageMap = new Map<string, number>()
 
   function recordUsage(id: string | null | undefined | symbol) {
-    if (typeof id === 'string' && id) {
+    if (typeof id === 'string' && id.trim()) {
       usageMap.set(id, (usageMap.get(id) || 0) + 1)
     }
   }
 
   function scanNode(node: BaseNode) {
-    if ('fillStyleId' in node) recordUsage((node as GeometryMixin).fillStyleId)
-    if ('strokeStyleId' in node) recordUsage((node as GeometryMixin).strokeStyleId)
-    if ('textStyleId' in node) recordUsage((node as TextNode).textStyleId)
-    if ('effectStyleId' in node) recordUsage((node as BlendMixin).effectStyleId)
-    if ('gridStyleId' in node) recordUsage((node as FrameNode).gridStyleId)
+    try {
+      if ('removed' in node && (node as any).removed) return
 
-    if ('children' in node) {
-      for (const child of (node as ChildrenMixin).children) {
-        scanNode(child)
+      if ('fillStyleId' in node) {
+        const fsId = (node as GeometryMixin).fillStyleId
+        if (typeof fsId === 'string') recordUsage(fsId)
       }
-    }
+      if ('strokeStyleId' in node) {
+        const ssId = (node as GeometryMixin).strokeStyleId
+        if (typeof ssId === 'string') recordUsage(ssId)
+      }
+      if ('textStyleId' in node) {
+        const tsId = (node as TextNode).textStyleId
+        if (typeof tsId === 'string') recordUsage(tsId)
+      }
+
+      // Check styled text segments if mixed
+      if (node.type === 'TEXT') {
+        const textNode = node as TextNode
+        if (
+          (textNode.textStyleId === figma.mixed || textNode.fillStyleId === figma.mixed) &&
+          'getStyledTextSegments' in textNode
+        ) {
+          try {
+            const segments = textNode.getStyledTextSegments(['textStyleId', 'fillStyleId'])
+            for (const seg of segments) {
+              if (seg.textStyleId) recordUsage(seg.textStyleId)
+              if (seg.fillStyleId) recordUsage(seg.fillStyleId)
+            }
+          } catch (_) {}
+        }
+      }
+
+      if ('effectStyleId' in node) {
+        const efId = (node as BlendMixin).effectStyleId
+        if (typeof efId === 'string') recordUsage(efId)
+      }
+      if ('gridStyleId' in node) {
+        const gsId = (node as FrameNode).gridStyleId
+        if (typeof gsId === 'string') recordUsage(gsId)
+      }
+
+      if ('children' in node) {
+        for (const child of (node as ChildrenMixin).children) {
+          scanNode(child)
+        }
+      }
+    } catch (_) {}
   }
 
-  for (const page of figma.root.children) {
-    scanNode(page)
+  if (scope === 'document') {
+    for (const page of figma.root.children) {
+      try {
+        if ('loadAsync' in page) {
+          await (page as any).loadAsync()
+        }
+        scanNode(page)
+      } catch (err) {
+        console.warn('[DesignKit] Could not load page:', page.name, err)
+        scanNode(page)
+      }
+    }
+  } else {
+    scanNode(figma.currentPage)
   }
 
   const unusedStyles: UnusedStyleItem[] = []
@@ -330,7 +381,12 @@ export function getStyleCleanupAnalysis(): StyleCleanupAnalysis {
 
   for (const s of textStyles) {
     if (!usageMap.has(s.id) || usageMap.get(s.id) === 0) {
-      unusedStyles.push({ id: s.id, name: s.name, type: 'TEXT', details: `${s.fontSize}px` })
+      unusedStyles.push({
+        id: s.id,
+        name: s.name,
+        type: 'TEXT',
+        details: `${s.fontName ? s.fontName.family : ''} ${s.fontSize}px`,
+      })
     }
   }
 
@@ -354,8 +410,10 @@ export function getStyleCleanupAnalysis(): StyleCleanupAnalysis {
     if (s.paints.length > 0 && s.paints[0].type === 'SOLID') {
       const c = s.paints[0].color
       const hex = figmaRgbToHex(c.r, c.g, c.b)
-      if (paintValueMap.has(hex)) {
-        const existing = paintValueMap.get(hex)!
+      const op = s.paints[0].opacity ?? 1
+      const key = `${hex}-${op}`
+      if (paintValueMap.has(key)) {
+        const existing = paintValueMap.get(key)!
         duplicateStyles.push({
           styleId: s.id,
           styleName: s.name,
@@ -364,8 +422,28 @@ export function getStyleCleanupAnalysis(): StyleCleanupAnalysis {
           type: 'PAINT',
         })
       } else {
-        paintValueMap.set(hex, s)
+        paintValueMap.set(key, s)
       }
+    }
+  }
+
+  // Detect duplicate text styles
+  const textValueMap = new Map<string, TextStyle>()
+  for (const s of textStyles) {
+    const family = s.fontName ? s.fontName.family : ''
+    const weight = s.fontName ? s.fontName.style : ''
+    const key = `${family}-${weight}-${s.fontSize}`
+    if (textValueMap.has(key)) {
+      const existing = textValueMap.get(key)!
+      duplicateStyles.push({
+        styleId: s.id,
+        styleName: s.name,
+        duplicateOfId: existing.id,
+        duplicateOfName: existing.name,
+        type: 'TEXT',
+      })
+    } else {
+      textValueMap.set(key, s)
     }
   }
 

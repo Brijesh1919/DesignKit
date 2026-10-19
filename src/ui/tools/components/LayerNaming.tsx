@@ -83,7 +83,7 @@ export const LayerNaming: React.FC<Props> = ({ selection, onSuccess, onError }) 
   return (
     <div className="tool-view">
       <div className="tool-header">
-        <div className="tool-breadcrumb">Components</div>
+        <div className="tool-breadcrumb">Layers</div>
         <h1 className="tool-title">Layer Naming</h1>
         <p className="tool-description">
           Batch rename generic layers (e.g. Rectangle 12, Frame 4) with semantic, contextual names.

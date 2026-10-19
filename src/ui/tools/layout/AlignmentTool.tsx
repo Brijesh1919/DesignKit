@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { sendToPlugin } from '../../utils/messaging'
 import type { SelectionInfo, AlignmentType } from '../../../shared/types'
 
@@ -32,6 +32,8 @@ const VERTICAL_ACTIONS: ActionBtn[] = [
 ]
 
 export const AlignmentTool: React.FC<Props> = ({ selection, onSuccess, onError }) => {
+  const [targetMode, setTargetMode] = useState<'auto' | 'parent' | 'children'>('auto')
+
   const handleAlign = (alignType: AlignmentType) => {
     if (!selection || selection.count === 0) {
       onError('Please select layers to align.')
@@ -40,7 +42,7 @@ export const AlignmentTool: React.FC<Props> = ({ selection, onSuccess, onError }
 
     sendToPlugin({
       type: 'APPLY_ALIGNMENT',
-      payload: { alignType },
+      payload: { alignType, targetMode },
     })
   }
 
@@ -52,12 +54,56 @@ export const AlignmentTool: React.FC<Props> = ({ selection, onSuccess, onError }
         <div className="tool-breadcrumb">Layout / Alignment Tool</div>
         <h1 className="tool-title">Alignment & Distribution</h1>
         <p className="tool-desc">
-          Precision alignment and equal-spacing distribution for single layers (relative to parent frame) or multiple layers.
+          Precision alignment and equal-spacing distribution for single layers, parent frames, and multiple selected layers.
         </p>
       </div>
 
       <div className="main-scroll">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)', maxWidth: 640 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)', maxWidth: 660 }}>
+          {/* Target Mode Segmented Switch */}
+          <div className="card">
+            <div className="card-body" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--sp-3)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 'var(--fw-semibold)', color: 'var(--c-text-primary)' }}>
+                  Alignment Scope:
+                </span>
+                <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--c-text-tertiary)' }}>
+                  {targetMode === 'auto'
+                    ? count === 1
+                      ? 'Auto: Align relative to parent container or children'
+                      : 'Auto: Align selection relative to each other'
+                    : targetMode === 'parent'
+                    ? 'Align layers to parent frame bounds'
+                    : 'Align children inside selected frame'}
+                </span>
+              </div>
+
+              <div style={{ display: 'inline-flex', background: 'var(--c-bg)', padding: 2, borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)' }}>
+                <button
+                  className={`btn btn-sm ${targetMode === 'auto' ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => setTargetMode('auto')}
+                  style={{ height: 26, padding: '0 var(--sp-3)' }}
+                >
+                  Auto
+                </button>
+                <button
+                  className={`btn btn-sm ${targetMode === 'parent' ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => setTargetMode('parent')}
+                  style={{ height: 26, padding: '0 var(--sp-3)' }}
+                >
+                  To Parent
+                </button>
+                <button
+                  className={`btn btn-sm ${targetMode === 'children' ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => setTargetMode('children')}
+                  style={{ height: 26, padding: '0 var(--sp-3)' }}
+                >
+                  Frame Children
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Selection indicator */}
           <div
             style={{
@@ -72,8 +118,8 @@ export const AlignmentTool: React.FC<Props> = ({ selection, onSuccess, onError }
             {count === 0
               ? 'Select 1 or more layers on the canvas to use alignment tools.'
               : count === 1
-              ? `1 layer selected — actions align relative to parent container.`
-              : `${count} layers selected — actions align relative to each other.`}
+              ? `1 layer selected ("${selection?.nodeName || 'Layer'}")`
+              : `${count} layers selected.`}
           </div>
 
           {/* Horizontal Alignment */}

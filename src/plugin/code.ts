@@ -17,6 +17,10 @@ import {
   getTextStyleExtractorData,
   applyStyleToText,
   applyLineHeightToSelection,
+  getDetectedFonts,
+  replaceFont,
+  selectFontNodes,
+  getAvailableFonts,
 } from './figma/typography'
 import {
   getSpacingInfo,
@@ -422,7 +426,7 @@ figma.ui.on('message', async (msg: UIMessage) => {
       }
 
       case 'GET_STYLE_CLEANUP_ANALYSIS': {
-        const analysis = getStyleCleanupAnalysis()
+        const analysis = await getStyleCleanupAnalysis(msg.payload?.scope ?? 'page')
         figma.ui.postMessage({
           type: 'STYLE_CLEANUP_ANALYSIS',
           payload: analysis,
@@ -609,7 +613,7 @@ figma.ui.on('message', async (msg: UIMessage) => {
       }
 
       case 'APPLY_ALIGNMENT': {
-        const count = applyAlignmentToSelection(msg.payload.alignType)
+        const count = applyAlignmentToSelection(msg.payload)
         figma.notify(`✅ Aligned ${count} layer${count !== 1 ? 's' : ''}`)
         figma.ui.postMessage({
           type: 'SUCCESS',
@@ -674,6 +678,45 @@ figma.ui.on('message', async (msg: UIMessage) => {
           type: 'SUCCESS',
           payload: { message: `Adjusted aspect ratio on ${count} layer${count !== 1 ? 's' : ''}` },
         })
+        break
+      }
+
+      case 'GET_DETECTED_FONTS': {
+        const data = await getDetectedFonts(msg.payload?.scope ?? 'selection')
+        figma.ui.postMessage({
+          type: 'DETECTED_FONTS_DATA',
+          payload: data,
+        })
+        break
+      }
+
+      case 'GET_AVAILABLE_FONTS': {
+        const data = await getAvailableFonts()
+        figma.ui.postMessage({
+          type: 'AVAILABLE_FONTS_DATA',
+          payload: data,
+        })
+        break
+      }
+
+      case 'REPLACE_FONT': {
+        const result = await replaceFont(msg.payload)
+        figma.notify(`✅ Replaced font on ${result.modifiedNodesCount} layer${result.modifiedNodesCount !== 1 ? 's' : ''}`)
+        figma.ui.postMessage({
+          type: 'SUCCESS',
+          payload: { message: `Updated font across ${result.modifiedNodesCount} layer${result.modifiedNodesCount !== 1 ? 's' : ''}` },
+        })
+        // Push refreshed fonts data
+        const updated = await getDetectedFonts(msg.payload.scope ?? 'selection')
+        figma.ui.postMessage({
+          type: 'DETECTED_FONTS_DATA',
+          payload: updated,
+        })
+        break
+      }
+
+      case 'SELECT_FONT_NODES': {
+        selectFontNodes(msg.payload.nodeIds)
         break
       }
 

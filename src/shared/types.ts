@@ -175,6 +175,7 @@ export type AlignmentType =
 
 export interface ApplyAlignmentPayload {
   alignType: AlignmentType;
+  targetMode?: 'auto' | 'parent' | 'children';
 }
 
 // --------------- Custom Text Style Generator Types ---------------
@@ -209,6 +210,33 @@ export interface UnstyledTextItem {
 export interface TextStyleExtractorData {
   localStyles: LocalTextStyleInfo[];
   unstyledNodes: UnstyledTextItem[];
+}
+
+// --------------- Font Replacer Types ---------------
+export interface DetectedFontItem {
+  family: string;
+  style: string;
+  count: number;
+  nodeIds: string[];
+  sampleText: string;
+}
+
+export interface DetectedFontsData {
+  fonts: DetectedFontItem[];
+  totalTextNodes: number;
+  uniqueFamiliesCount: number;
+  scope: 'selection' | 'page';
+  availableFamilies?: string[];
+  familyStylesMap?: Record<string, string[]>;
+}
+
+export interface ReplaceFontPayload {
+  sourceFamily: string;
+  sourceStyle?: string;
+  targetFamily: string;
+  targetStyle: string;
+  nodeIds?: string[];
+  scope?: 'selection' | 'page';
 }
 
 // --------------- Line Height Calculator Types ---------------
@@ -604,7 +632,7 @@ export type UIMessage =
   | { type: 'GET_DESIGN_AUDIT'; payload?: { scope?: 'selection' | 'page' } }
   | { type: 'GET_LAYER_CLEANUP_CANDIDATES'; payload?: { scope?: 'selection' | 'page' } }
   | { type: 'APPLY_LAYER_CLEANUP'; payload: ApplyLayerCleanupPayload }
-  | { type: 'GET_STYLE_CLEANUP_ANALYSIS' }
+  | { type: 'GET_STYLE_CLEANUP_ANALYSIS'; payload?: { scope?: 'page' | 'document' } }
   | { type: 'APPLY_DELETE_STYLES'; payload: ApplyDeleteStylesPayload }
   // Developer
   | { type: 'GET_CSS_GENERATOR_DATA' }
@@ -628,7 +656,11 @@ export type UIMessage =
   | { type: 'APPLY_STYLE_TO_TEXT'; payload: { nodeId: string; styleId: string } }
   | { type: 'APPLY_LINE_HEIGHT'; payload: ApplyLineHeightPayload }
   | { type: 'APPLY_IMAGE_RESIZE'; payload: ApplyImageResizePayload }
-  | { type: 'APPLY_IMAGE_CROP'; payload: ApplyImageCropPayload };
+  | { type: 'APPLY_IMAGE_CROP'; payload: ApplyImageCropPayload }
+  | { type: 'GET_DETECTED_FONTS'; payload?: { scope?: 'selection' | 'page' } }
+  | { type: 'REPLACE_FONT'; payload: ReplaceFontPayload }
+  | { type: 'SELECT_FONT_NODES'; payload: { nodeIds: string[] } }
+  | { type: 'GET_AVAILABLE_FONTS' };
 
 
 // Messages sent from the plugin sandbox → UI iframe
@@ -666,5 +698,7 @@ export type PluginMessage =
   // Additional Tools
   | { type: 'EXTRACTED_COLORS_DATA'; payload: ExtractColorsData }
   | { type: 'GRID_CHECKER_ANALYSIS'; payload: GridCheckerAnalysis }
-  | { type: 'TEXT_STYLE_EXTRACTOR_DATA'; payload: TextStyleExtractorData };
+  | { type: 'TEXT_STYLE_EXTRACTOR_DATA'; payload: TextStyleExtractorData }
+  | { type: 'DETECTED_FONTS_DATA'; payload: DetectedFontsData }
+  | { type: 'AVAILABLE_FONTS_DATA'; payload: { families: string[]; familyStylesMap: Record<string, string[]> } };
 

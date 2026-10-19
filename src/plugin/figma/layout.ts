@@ -359,92 +359,245 @@ export function applyPaddingToSelection(payload: ApplyPaddingPayload): number {
 }
 
 // -------------------------------------------------------
+// -------------------------------------------------------
 // Alignment Tool
 // -------------------------------------------------------
-export function applyAlignmentToSelection(alignType: AlignmentType): number {
+export function applyAlignmentToSelection(
+  payload: ApplyAlignmentPayload | AlignmentType
+): number {
+  const alignType: AlignmentType = typeof payload === 'string' ? payload : payload.alignType
+  const targetMode = typeof payload === 'object' && payload.targetMode ? payload.targetMode : 'auto'
+
   const selection = figma.currentPage.selection
   if (selection.length === 0) {
     throw new Error('Please select at least one layer to align.')
   }
 
-  // Single layer: align relative to parent frame bounds
+  // 1. Single selection case
   if (selection.length === 1) {
-    const node = selection[0]
-    if (!('x' in node && 'y' in node && 'width' in node && 'height' in node)) return
-    const parent = node.parent
-    if (!parent || !('width' in parent && 'height' in parent)) return
+    const singleNode = selection[0]
 
-    const pw = (parent as any).width
-    const ph = (parent as any).height
-    const nw = node.width
-    const nh = node.height
+    // If targetMode is 'children' OR (container with 2+ children and either targetMode !== 'parent' or parent is Page)
+    const hasChildren = 'children' in singleNode && (singleNode as ChildrenMixin).children.length >= 1
+    const isRootOrRequested = targetMode === 'children' || (targetMode === 'auto' && singleNode.parent?.type === 'PAGE' && hasChildren)
 
-    switch (alignType) {
-      case 'LEFT': node.x = 0; break
-      case 'CENTER': node.x = Math.round((pw - nw) / 2); break
-      case 'RIGHT': node.x = Math.round(pw - nw); break
-      case 'TOP': node.y = 0; break
-      case 'MIDDLE': node.y = Math.round((ph - nh) / 2); break
-      case 'BOTTOM': node.y = Math.round(ph - nh); break
+    if (hasChildren && isRootOrRequested) {
+      const container = singleNode as FrameNode
+
+      // If container is Auto-Layout, adjust its alignment settings
+      if ('layoutMode' in container && container.layoutMode !== 'NONE') {
+        if (container.layoutMode === 'VERTICAL') {
+          switch (alignType) {
+            case 'LEFT': container.counterAxisAlignItems = 'MIN'; break
+            case 'CENTER': container.counterAxisAlignItems = 'CENTER'; break
+            case 'RIGHT': container.counterAxisAlignItems = 'MAX'; break
+            case 'TOP': container.primaryAxisAlignItems = 'MIN'; break
+            case 'MIDDLE': container.primaryAxisAlignItems = 'CENTER'; break
+            case 'BOTTOM': container.primaryAxisAlignItems = 'MAX'; break
+            case 'SPACE_EVENLY_VERTICAL':
+            case 'DISTRIBUTE_VERTICALLY':
+              container.primaryAxisAlignItems = 'SPACE_BETWEEN'
+              break
+          }
+        } else if (container.layoutMode === 'HORIZONTAL') {
+          switch (alignType) {
+            case 'LEFT': container.primaryAxisAlignItems = 'MIN'; break
+            case 'CENTER': container.primaryAxisAlignItems = 'CENTER'; break
+            case 'RIGHT': container.primaryAxisAlignItems = 'MAX'; break
+            case 'TOP': container.counterAxisAlignItems = 'MIN'; break
+            case 'MIDDLE': container.counterAxisAlignItems = 'CENTER'; break
+            case 'BOTTOM': container.counterAxisAlignItems = 'MAX'; break
+            case 'SPACE_EVENLY_HORIZONTAL':
+            case 'DISTRIBUTE_HORIZONTALLY':
+              container.primaryAxisAlignItems = 'SPACE_BETWEEN'
+              break
+          }
+        }
+        return container.children.length
+      }
+
+      // Freeform container: align children inside this container
+      const children = [...container.children].filter(isPositioned)
+      if (children.length === 0) return 0
+      alignPositionedNodes(children, alignType, container)
+      return children.length
     }
-    return
+
+    // Otherwise align this single node inside its parent
+    const parent = singleNode.parent
+    if (parent && 'layoutMode' in parent && (parent as FrameNode).layoutMode !== 'NONE') {
+      const pFrame = parent as FrameNode
+      if (pFrame.layoutMode === 'VERTICAL') {
+        switch (alignType) {
+          case 'LEFT': pFrame.counterAxisAlignItems = 'MIN'; break
+          case 'CENTER': pFrame.counterAxisAlignItems = 'CENTER'; break
+          case 'RIGHT': pFrame.counterAxisAlignItems = 'MAX'; break
+        }
+      } else {
+        switch (alignType) {
+          case 'TOP': pFrame.counterAxisAlignItems = 'MIN'; break
+          case 'MIDDLE': pFrame.counterAxisAlignItems = 'CENTER'; break
+          case 'BOTTOM': pFrame.counterAxisAlignItems = 'MAX'; break
+        }
+      }
+      return 1
+    }
+
+    if (parent && 'width' in parent && 'height' in parent && isPositioned(singleNode)) {
+      const pw = (parent as any).width
+      const ph = (parent as any).height
+      const nw = singleNode.width
+      const nh = singleNode.height
+
+      switch (alignType) {
+        case 'LEFT': singleNode.x = 0; break
+        case 'CENTER': singleNode.x = Math.round((pw - nw) / 2); break
+        case 'RIGHT': singleNode.x = Math.round(pw - nw); break
+        case 'TOP': singleNode.y = 0; break
+        case 'MIDDLE': singleNode.y = Math.round((ph - nh) / 2); break
+        case 'BOTTOM': singleNode.y = Math.round(ph - nh); break
+      }
+      return 1
+    }
+
+    return 0
   }
 
-  // Multiple layers
+  // 2. Multiple selection case
   const positioned = [...selection].filter(isPositioned)
-  if (positioned.length < 2) return
+  if (positioned.length === 0) return 0
 
-  const minX = Math.min(...positioned.map(n => n.x))
-  const maxX = Math.max(...positioned.map(n => n.x + n.width))
-  const minY = Math.min(...positioned.map(n => n.y))
-  const maxY = Math.max(...positioned.map(n => n.y + n.height))
+  // Check if they share an auto-layout parent
+  const firstParent = positioned[0].parent
+  const sameParent = positioned.every(n => n.parent === firstParent)
+  if (sameParent && firstParent && 'layoutMode' in firstParent && (firstParent as FrameNode).layoutMode !== 'NONE') {
+    const pFrame = firstParent as FrameNode
+    if (pFrame.layoutMode === 'VERTICAL') {
+      switch (alignType) {
+        case 'LEFT': pFrame.counterAxisAlignItems = 'MIN'; break
+        case 'CENTER': pFrame.counterAxisAlignItems = 'CENTER'; break
+        case 'RIGHT': pFrame.counterAxisAlignItems = 'MAX'; break
+        case 'TOP': pFrame.primaryAxisAlignItems = 'MIN'; break
+        case 'MIDDLE': pFrame.primaryAxisAlignItems = 'CENTER'; break
+        case 'BOTTOM': pFrame.primaryAxisAlignItems = 'MAX'; break
+        case 'SPACE_EVENLY_VERTICAL':
+        case 'DISTRIBUTE_VERTICALLY':
+          pFrame.primaryAxisAlignItems = 'SPACE_BETWEEN'
+          break
+      }
+    } else {
+      switch (alignType) {
+        case 'LEFT': pFrame.primaryAxisAlignItems = 'MIN'; break
+        case 'CENTER': pFrame.primaryAxisAlignItems = 'CENTER'; break
+        case 'RIGHT': pFrame.primaryAxisAlignItems = 'MAX'; break
+        case 'TOP': pFrame.counterAxisAlignItems = 'MIN'; break
+        case 'MIDDLE': pFrame.counterAxisAlignItems = 'CENTER'; break
+        case 'BOTTOM': pFrame.counterAxisAlignItems = 'MAX'; break
+        case 'SPACE_EVENLY_HORIZONTAL':
+        case 'DISTRIBUTE_HORIZONTALLY':
+          pFrame.primaryAxisAlignItems = 'SPACE_BETWEEN'
+          break
+      }
+    }
+    return positioned.length
+  }
+
+  // If aligning to parent frame
+  if (targetMode === 'parent' && firstParent && 'width' in firstParent && 'height' in firstParent) {
+    const pw = (firstParent as any).width
+    const ph = (firstParent as any).height
+    for (const node of positioned) {
+      switch (alignType) {
+        case 'LEFT': node.x = 0; break
+        case 'CENTER': node.x = Math.round((pw - node.width) / 2); break
+        case 'RIGHT': node.x = Math.round(pw - node.width); break
+        case 'TOP': node.y = 0; break
+        case 'MIDDLE': node.y = Math.round((ph - node.height) / 2); break
+        case 'BOTTOM': node.y = Math.round(ph - node.height); break
+      }
+    }
+    return positioned.length
+  }
+
+  // Standard multi-item alignment relative to selection bounding box
+  alignPositionedNodes(positioned, alignType)
+  return positioned.length
+}
+
+function alignPositionedNodes(
+  nodes: PositionedNode[],
+  alignType: AlignmentType,
+  boundsContainer?: SceneNode
+) {
+  if (nodes.length === 0) return
+
+  let minX: number
+  let maxX: number
+  let minY: number
+  let maxY: number
+
+  if (boundsContainer && 'width' in boundsContainer && 'height' in boundsContainer) {
+    minX = 0
+    maxX = (boundsContainer as any).width
+    minY = 0
+    maxY = (boundsContainer as any).height
+  } else {
+    minX = Math.min(...nodes.map(n => n.x))
+    maxX = Math.max(...nodes.map(n => n.x + n.width))
+    minY = Math.min(...nodes.map(n => n.y))
+    maxY = Math.max(...nodes.map(n => n.y + n.height))
+  }
+
   const centerX = (minX + maxX) / 2
   const centerY = (minY + maxY) / 2
 
   switch (alignType) {
     case 'LEFT':
-      for (const n of positioned) n.x = minX
+      for (const n of nodes) n.x = minX
       break
     case 'CENTER':
-      for (const n of positioned) n.x = Math.round(centerX - n.width / 2)
+      for (const n of nodes) n.x = Math.round(centerX - n.width / 2)
       break
     case 'RIGHT':
-      for (const n of positioned) n.x = Math.round(maxX - n.width)
+      for (const n of nodes) n.x = Math.round(maxX - n.width)
       break
     case 'TOP':
-      for (const n of positioned) n.y = minY
+      for (const n of nodes) n.y = minY
       break
     case 'MIDDLE':
-      for (const n of positioned) n.y = Math.round(centerY - n.height / 2)
+      for (const n of nodes) n.y = Math.round(centerY - n.height / 2)
       break
     case 'BOTTOM':
-      for (const n of positioned) n.y = Math.round(maxY - n.height)
+      for (const n of nodes) n.y = Math.round(maxY - n.height)
       break
 
     case 'DISTRIBUTE_HORIZONTALLY': {
-      const sorted = [...positioned].sort((a, b) => a.x - b.x)
-      const first = sorted[0]
-      const last = sorted[sorted.length - 1]
-      const step = (last.x - first.x) / (sorted.length - 1)
+      if (nodes.length < 3) return
+      const sorted = [...nodes].sort((a, b) => (a.x + a.width / 2) - (b.x + b.width / 2))
+      const firstCenter = sorted[0].x + sorted[0].width / 2
+      const lastCenter = sorted[sorted.length - 1].x + sorted[sorted.length - 1].width / 2
+      const step = (lastCenter - firstCenter) / (sorted.length - 1)
       for (let i = 1; i < sorted.length - 1; i++) {
-        sorted[i].x = Math.round(first.x + i * step)
+        sorted[i].x = Math.round(firstCenter + i * step - sorted[i].width / 2)
       }
       break
     }
 
     case 'DISTRIBUTE_VERTICALLY': {
-      const sorted = [...positioned].sort((a, b) => a.y - b.y)
-      const first = sorted[0]
-      const last = sorted[sorted.length - 1]
-      const step = (last.y - first.y) / (sorted.length - 1)
+      if (nodes.length < 3) return
+      const sorted = [...nodes].sort((a, b) => (a.y + a.height / 2) - (b.y + b.height / 2))
+      const firstCenter = sorted[0].y + sorted[0].height / 2
+      const lastCenter = sorted[sorted.length - 1].y + sorted[sorted.length - 1].height / 2
+      const step = (lastCenter - firstCenter) / (sorted.length - 1)
       for (let i = 1; i < sorted.length - 1; i++) {
-        sorted[i].y = Math.round(first.y + i * step)
+        sorted[i].y = Math.round(firstCenter + i * step - sorted[i].height / 2)
       }
       break
     }
 
     case 'SPACE_EVENLY_HORIZONTAL': {
-      const sorted = [...positioned].sort((a, b) => a.x - b.x)
+      if (nodes.length < 2) return
+      const sorted = [...nodes].sort((a, b) => a.x - b.x)
       const totalWidth = sorted.reduce((sum, n) => sum + n.width, 0)
       const availableSpace = (maxX - minX) - totalWidth
       const gap = Math.round(availableSpace / (sorted.length - 1))
@@ -457,7 +610,8 @@ export function applyAlignmentToSelection(alignType: AlignmentType): number {
     }
 
     case 'SPACE_EVENLY_VERTICAL': {
-      const sorted = [...positioned].sort((a, b) => a.y - b.y)
+      if (nodes.length < 2) return
+      const sorted = [...nodes].sort((a, b) => a.y - b.y)
       const totalHeight = sorted.reduce((sum, n) => sum + n.height, 0)
       const availableSpace = (maxY - minY) - totalHeight
       const gap = Math.round(availableSpace / (sorted.length - 1))
@@ -469,7 +623,5 @@ export function applyAlignmentToSelection(alignType: AlignmentType): number {
       break
     }
   }
-
-  return selection.length
 }
 

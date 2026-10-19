@@ -403,11 +403,20 @@ function sanitizeClassName(name: string): string {
 export function getResponsiveCssForSelection(
   selection: readonly SceneNode[]
 ): ResponsiveCssData | null {
-  if (!selection || selection.length === 0) return null
+  const nodes = selection && selection.length > 0
+    ? selection
+    : figma.currentPage.selection
 
-  const rootNode = selection.find(
-    n => n.type === 'FRAME' || n.type === 'COMPONENT' || n.type === 'GROUP' || n.type === 'SECTION'
-  ) || selection[0]
+  let rootNode = nodes.find(
+    n => n.type === 'FRAME' || n.type === 'COMPONENT' || n.type === 'GROUP' || n.type === 'SECTION' || n.type === 'INSTANCE'
+  ) || nodes[0]
+
+  // If still no node, fallback to the first top-level frame on current page
+  if (!rootNode) {
+    rootNode = figma.currentPage.children.find(
+      n => n.type === 'FRAME' || n.type === 'COMPONENT' || n.type === 'GROUP' || n.type === 'SECTION'
+    )
+  }
 
   if (!rootNode || !('width' in rootNode)) return null
 
@@ -422,29 +431,45 @@ export function getResponsiveCssForSelection(
   function generateRules(node: ResponsiveNode, isRoot: boolean) {
     const className = sanitizeClassName(node.name)
 
-    // Base Desktop Rule
+    // Base Desktop Rule (>= 1440px / 1200px)
     const baseProps: string[] = []
     if (isRoot) {
       baseProps.push(`  width: 100%;`)
       baseProps.push(`  max-width: ${node.width}px;`)
       baseProps.push(`  margin: 0 auto;`)
+      baseProps.push(`  box-sizing: border-box;`)
+      if (node.layoutMode === 'NONE') {
+        baseProps.push(`  position: relative;`)
+        if (node.height > 0) baseProps.push(`  min-height: ${node.height}px;`)
+      }
     }
 
     if (node.layoutMode !== 'NONE') {
       baseProps.push(`  display: flex;`)
       baseProps.push(`  flex-direction: ${node.layoutMode === 'HORIZONTAL' ? 'row' : 'column'};`)
+      baseProps.push(`  box-sizing: border-box;`)
       if (node.itemSpacing > 0) baseProps.push(`  gap: ${node.itemSpacing}px;`)
-      if (node.paddingTop > 0 || node.paddingLeft > 0) {
+      if (node.paddingTop > 0 || node.paddingLeft > 0 || node.paddingRight > 0 || node.paddingBottom > 0) {
         if (node.paddingTop === node.paddingLeft && node.paddingLeft === node.paddingRight && node.paddingRight === node.paddingBottom) {
           baseProps.push(`  padding: ${node.paddingTop}px;`)
         } else {
           baseProps.push(`  padding: ${node.paddingTop}px ${node.paddingRight}px ${node.paddingBottom}px ${node.paddingLeft}px;`)
         }
       }
+    } else if (!isRoot && node.width > 0 && node.height > 0) {
+      baseProps.push(`  width: ${node.width}px;`)
+      baseProps.push(`  height: ${node.height}px;`)
+      baseProps.push(`  box-sizing: border-box;`)
     }
 
     if (node.isText && node.fontSize) {
       baseProps.push(`  font-size: ${Math.round(node.fontSize)}px;`)
+      baseProps.push(`  line-height: 1.4;`)
+    }
+
+    if (node.isImage) {
+      baseProps.push(`  object-fit: cover;`)
+      baseProps.push(`  border-radius: inherit;`)
     }
 
     if (baseProps.length > 0) {
@@ -453,11 +478,19 @@ export function getResponsiveCssForSelection(
 
     // Tablet Overrides (@media max-width: 768px)
     const tabProps: string[] = []
-    if (node.layoutMode === 'HORIZONTAL' && node.children.length >= 2 && node.width > 700) {
+    if (isRoot) {
+      tabProps.push(`  max-width: 100%;`)
+      tabProps.push(`  padding: 0 24px;`)
+      if (node.layoutMode === 'NONE') {
+        tabProps.push(`  min-height: auto;`)
+      }
+    }
+
+    if (node.layoutMode === 'HORIZONTAL' && node.children.length >= 2 && node.width > 600) {
       tabProps.push(`  flex-direction: column;`)
       tabProps.push(`  gap: ${Math.max(16, Math.round(node.itemSpacing * 0.75))}px;`)
     }
-    if ((node.paddingLeft + node.paddingRight) > 64) {
+    if ((node.paddingLeft + node.paddingRight) > 48) {
       tabProps.push(`  padding: ${Math.round(node.paddingTop * 0.75)}px 24px;`)
     }
 
@@ -467,20 +500,39 @@ export function getResponsiveCssForSelection(
 
     // Mobile Overrides (@media max-width: 390px)
     const mobProps: string[] = []
-    if (node.layoutMode === 'HORIZONTAL' && node.height <= 120 && node.width > 350) {
-      // Structural: wide horizontal row on mobile → likely a nav/toolbar → collapse
+    if (isRoot) {
+      mobProps.push(`  padding: 0 16px;`)
+      mobProps.push(`  width: 100%;`)
+      if (node.layoutMode === 'NONE') {
+        mobProps.push(`  display: flex;`)
+        mobProps.push(`  flex-direction: column;`)
+        mobProps.push(`  gap: 16px;`)
+        mobProps.push(`  min-height: auto;`)
+      }
+    }
+
+    if (node.layoutMode === 'HORIZONTAL') {
       mobProps.push(`  flex-direction: column;`)
       mobProps.push(`  width: 100%;`)
+      mobProps.push(`  gap: ${Math.max(12, Math.round(node.itemSpacing * 0.6))}px;`)
     }
-    if (node.isText && node.fontSize >= 32) {
-      mobProps.push(`  font-size: ${Math.max(22, Math.round(node.fontSize * 0.65))}px;`)
-    }
-    if ((node.paddingLeft + node.paddingRight) >= 32) {
-      mobProps.push(`  padding: 16px;`)
-    }
-    if (node.width > 350 && !isRoot) {
+
+    if (!isRoot && (node.width > 280 || node.layoutMode === 'NONE')) {
       mobProps.push(`  width: 100%;`)
       mobProps.push(`  max-width: 100%;`)
+      if (node.isText) {
+        mobProps.push(`  height: auto;`)
+      }
+    }
+
+    if (node.isText && node.fontSize >= 28) {
+      mobProps.push(`  font-size: ${Math.max(20, Math.round(node.fontSize * 0.68))}px;`)
+    } else if (node.isText && node.fontSize >= 18) {
+      mobProps.push(`  font-size: ${Math.max(15, Math.round(node.fontSize * 0.85))}px;`)
+    }
+
+    if ((node.paddingLeft + node.paddingRight) >= 32) {
+      mobProps.push(`  padding: 16px;`)
     }
 
     if (mobProps.length > 0) {
@@ -489,10 +541,13 @@ export function getResponsiveCssForSelection(
 
     // Small Mobile Overrides (@media max-width: 320px)
     const smMobProps: string[] = []
-    if (node.isText && node.fontSize >= 28) {
-      smMobProps.push(`  font-size: 20px;`)
+    if (isRoot) {
+      smMobProps.push(`  padding: 0 12px;`)
     }
-    if (node.paddingLeft >= 20 || node.paddingRight >= 20) {
+    if (node.isText && node.fontSize >= 24) {
+      smMobProps.push(`  font-size: 18px;`)
+    }
+    if (node.paddingLeft >= 16 || node.paddingRight >= 16) {
       smMobProps.push(`  padding: 12px;`)
     }
 
@@ -511,14 +566,14 @@ export function getResponsiveCssForSelection(
 
   // 1. Base Styles
   if (baseRules.length > 0) {
-    outputSections.push(`/* Base Desktop Layout (>= 1440px) */\n` + baseRules.join('\n\n'))
+    outputSections.push(`/* ============================================================ */\n/* 1. Base Desktop Styles (>= 1440px)                           */\n/* ============================================================ */\n\n` + baseRules.join('\n\n'))
   }
 
   // 2. Tablet Query
   if (tabletRules.length > 0) {
     mediaQueriesCount++
     outputSections.push(
-      `/* Tablet Viewport (<= 768px) */\n@media (max-width: 768px) {\n${tabletRules.join('\n\n')}\n}`
+      `/* ============================================================ */\n/* 2. Tablet Viewport (<= 768px)                                */\n/* ============================================================ */\n@media screen and (max-width: 768px) {\n${tabletRules.join('\n\n')}\n}`
     )
   }
 
@@ -526,7 +581,7 @@ export function getResponsiveCssForSelection(
   if (mobileRules.length > 0) {
     mediaQueriesCount++
     outputSections.push(
-      `/* Mobile Viewport (<= 390px) */\n@media (max-width: 390px) {\n${mobileRules.join('\n\n')}\n}`
+      `/* ============================================================ */\n/* 3. Mobile Viewport (<= 390px)                                */\n/* ============================================================ */\n@media screen and (max-width: 390px) {\n${mobileRules.join('\n\n')}\n}`
     )
   }
 
@@ -534,7 +589,7 @@ export function getResponsiveCssForSelection(
   if (smallMobileRules.length > 0) {
     mediaQueriesCount++
     outputSections.push(
-      `/* Small Mobile Viewport (<= 320px) */\n@media (max-width: 320px) {\n${smallMobileRules.join('\n\n')}\n}`
+      `/* ============================================================ */\n/* 4. Small Mobile Viewport (<= 320px)                          */\n/* ============================================================ */\n@media screen and (max-width: 320px) {\n${smallMobileRules.join('\n\n')}\n}`
     )
   }
 

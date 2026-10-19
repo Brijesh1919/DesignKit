@@ -11,7 +11,7 @@ export type ToolCategoryId =
   | 'typography'
   | 'layout'
   | 'images'
-  | 'components'
+  | 'layers'
   | 'accessibility'
   | 'responsive'
   | 'cleanup'
@@ -46,6 +46,7 @@ const TypographyScale   = lazy(() => import('../tools/typography/TypographyScale
 const TextStyleGenerator = lazy(() => import('../tools/typography/TextStyleGenerator'))
 const TextStyleExtractor = lazy(() => import('../tools/typography/TextStyleExtractor'))
 const LineHeightCalculator = lazy(() => import('../tools/typography/LineHeightCalculator'))
+const FontReplacer       = lazy(() => import('../tools/typography/FontReplacer'))
 const SpacingNormalizer = lazy(() => import('../tools/layout/SpacingNormalizer'))
 const AutoLayoutOpt     = lazy(() => import('../tools/layout/AutoLayoutOptimizer'))
 const PaddingTool       = lazy(() => import('../tools/layout/PaddingTool'))
@@ -55,8 +56,6 @@ const ImageColorExtractor = lazy(() => import('../tools/images/ImageColorExtract
 const BackgroundRemover = lazy(() => import('../tools/images/BackgroundRemover'))
 const ImageResize       = lazy(() => import('../tools/images/ImageResize'))
 const ImageCrop         = lazy(() => import('../tools/images/ImageCrop'))
-const CreateComponent   = lazy(() => import('../tools/components/CreateComponent'))
-const ComponentNaming   = lazy(() => import('../tools/components/ComponentNaming'))
 const LayerNaming       = lazy(() => import('../tools/components/LayerNaming'))
 const TouchTargetChecker = lazy(() => import('../tools/accessibility/TouchTargetChecker'))
 const TextSizeChecker    = lazy(() => import('../tools/accessibility/TextSizeChecker'))
@@ -169,6 +168,15 @@ export const CATEGORIES: CategoryDef[] = [
         implemented: true,
         component: LineHeightCalculator,
       },
+      {
+        id: 'font-replacer',
+        name: 'Font Replacer',
+        description: 'Detect all fonts in selection or page and batch replace them with any font and weight',
+        keywords: ['font', 'replace', 'swap', 'family', 'weight', 'typography', 'batch', 'switcher'],
+        categoryId: 'typography',
+        implemented: true,
+        component: FontReplacer,
+      },
     ],
   },
 
@@ -270,34 +278,16 @@ export const CATEGORIES: CategoryDef[] = [
   },
 
   {
-    id: 'components',
-    label: 'Components',
-    iconName: 'component',
+    id: 'layers',
+    label: 'Layers',
+    iconName: 'layers',
     tools: [
-      {
-        id: 'create-component',
-        name: 'Create Component',
-        description: 'Convert selection to a component with smart naming',
-        keywords: ['component', 'create', 'symbol', 'convert'],
-        categoryId: 'components',
-        implemented: true,
-        component: CreateComponent,
-      },
-      {
-        id: 'component-naming',
-        name: 'Component Naming',
-        description: 'Batch rename components with a consistent convention',
-        keywords: ['rename', 'naming', 'component', 'convention'],
-        categoryId: 'components',
-        implemented: true,
-        component: ComponentNaming,
-      },
       {
         id: 'layer-naming',
         name: 'Layer Naming',
-        description: 'Batch rename layers with pattern-based rules',
-        keywords: ['layer', 'rename', 'naming', 'batch'],
-        categoryId: 'components',
+        description: 'Batch rename generic layers with semantic, contextual names',
+        keywords: ['layer', 'rename', 'naming', 'batch', 'clean'],
+        categoryId: 'layers',
         implemented: true,
         component: LayerNaming,
       },

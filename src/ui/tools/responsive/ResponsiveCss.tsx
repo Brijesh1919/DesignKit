@@ -59,111 +59,106 @@ export const ResponsiveCss: React.FC<Props> = ({ selection, onSuccess, onError }
     }
   }
 
-  const hasFrame =
-    selection &&
-    selection.count > 0 &&
-    (selection.hasFrame ||
-      selection.types.some(t => t === 'FRAME' || t === 'COMPONENT' || t === 'GROUP' || t === 'SECTION'))
-
   return (
     <div className="tool-view">
       <div className="tool-header">
-        <div className="tool-breadcrumb">Responsive</div>
-        <h1 className="tool-title">Responsive CSS</h1>
-        <p className="tool-description">
-          Generate production-ready CSS rules with responsive media queries for Desktop, Tablet (768px), Mobile (390px), and Small Mobile (320px).
+        <div className="tool-breadcrumb">Responsive / Responsive CSS</div>
+        <h1 className="tool-title">Responsive CSS Generator</h1>
+        <p className="tool-desc">
+          Generate clean, production-ready CSS rules with responsive media queries for Desktop, Tablet (768px), Mobile (390px), and Small Mobile (320px).
         </p>
       </div>
 
-      <div className="tool-body">
-        <SelectionBanner
-          selection={selection}
-          selectionHint="Select a frame to generate responsive layout and media query CSS."
-        />
+      <div className="main-scroll">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)', maxWidth: 720 }}>
+          <SelectionBanner
+            selection={selection}
+            selectionHint="Select any frame or container on the canvas to generate responsive CSS with media query overrides."
+          />
 
-        {/* Action Controls */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={handleCopy}
-              disabled={!data || !data.css || loading}
-            >
-              {copied ? '✓ Copied!' : 'Copy Responsive CSS'}
-            </button>
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={requestCss}
-              disabled={loading}
-            >
-              {loading ? 'Generating…' : 'Re-generate'}
-            </button>
-          </div>
-
-          {data && (
-            <span style={{ fontSize: 11, color: 'var(--c-text-tertiary)' }}>
-              {data.mediaQueriesCount} Media {data.mediaQueriesCount === 1 ? 'Query' : 'Queries'} Generated
-            </span>
-          )}
-        </div>
-
-        {/* Code Content */}
-        {loading ? (
-          <div className="empty-state">
-            <div style={{ fontSize: 13, color: 'var(--c-text-tertiary)' }}>
-              Generating responsive media-query CSS…
-            </div>
-          </div>
-        ) : !data || !hasFrame ? (
-          <div className="empty-state">
-            <div className="empty-state-title">Select a Frame</div>
-            <div className="empty-state-body">
-              Select a frame on the canvas to generate responsive CSS with media query overrides.
-            </div>
-          </div>
-        ) : (
-          <div className="card" style={{ overflow: 'hidden' }}>
-            <div
-              className="card-header"
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                paddingBottom: 'var(--sp-2)',
-                borderBottom: '1px solid var(--c-border-subtle)',
-              }}
-            >
-              <div className="card-title">
-                {data.frameName} — Responsive Rules
-              </div>
+          {/* Action Controls */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
               <button
-                className="btn btn-ghost btn-sm"
+                className="btn btn-primary btn-sm"
                 onClick={handleCopy}
-                style={{ fontSize: 11 }}
+                disabled={!data || !data.css || loading}
               >
-                {copied ? '✓ Copied' : 'Copy'}
+                {copied ? '✓ Copied!' : 'Copy Responsive CSS'}
+              </button>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={requestCss}
+                disabled={loading}
+              >
+                {loading ? 'Generating…' : 'Re-generate'}
               </button>
             </div>
 
-            <pre
-              style={{
-                margin: 0,
-                padding: 'var(--sp-4)',
-                fontSize: 12,
-                fontFamily: 'monospace',
-                lineHeight: 1.5,
-                background: 'var(--c-bg-subtle, #12141a)',
-                color: 'var(--c-text-primary)',
-                maxHeight: 460,
-                overflowY: 'auto',
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-              }}
-            >
-              {data.css}
-            </pre>
+            {data && data.mediaQueriesCount > 0 && (
+              <span style={{ fontSize: 11, color: 'var(--c-text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+                {data.mediaQueriesCount} Media {data.mediaQueriesCount === 1 ? 'Query' : 'Queries'} • {data.frameName}
+              </span>
+            )}
           </div>
-        )}
+
+          {/* Code Content */}
+          {loading ? (
+            <div className="empty-state">
+              <div style={{ fontSize: 13, color: 'var(--c-text-tertiary)' }}>
+                Generating responsive media-query CSS…
+              </div>
+            </div>
+          ) : !data || !data.css ? (
+            <div className="empty-state">
+              <div className="empty-state-title">Select a Frame or Container</div>
+              <div className="empty-state-body">
+                Select any frame, component, or group on the canvas to inspect its layout structure and generate production media queries.
+              </div>
+            </div>
+          ) : (
+            <div className="card" style={{ overflow: 'hidden' }}>
+              <div
+                className="card-header"
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <div className="card-title">
+                  {data.frameName} — Responsive Rules
+                </div>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={handleCopy}
+                  style={{ fontSize: 11 }}
+                >
+                  {copied ? '✓ Copied' : 'Copy Code'}
+                </button>
+              </div>
+
+              <pre
+                style={{
+                  margin: 0,
+                  padding: 'var(--sp-4)',
+                  fontSize: 12,
+                  fontFamily: 'var(--font-mono, monospace)',
+                  lineHeight: 1.6,
+                  background: 'var(--c-bg-subtle, #12141a)',
+                  color: 'var(--c-text-primary)',
+                  maxHeight: 480,
+                  overflowY: 'auto',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  borderTop: '1px solid var(--c-border-subtle)',
+                }}
+              >
+                {data.css}
+              </pre>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

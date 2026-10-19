@@ -309,3 +309,287 @@ export async function applyLineHeightToSelection(
   return count
 }
 
+// -------------------------------------------------------
+// Font Replacer: Detect all fonts in scope
+// -------------------------------------------------------
+import type {
+  DetectedFontItem,
+  DetectedFontsData,
+  ReplaceFontPayload,
+} from '../../shared/types'
+
+function weightCandidateFromName(styleName?: string): number {
+  if (!styleName) return 400
+  const s = styleName.toLowerCase()
+  if (s.includes('thin') || s.includes('hairline')) return 100
+  if (s.includes('extralight') || s.includes('extra light') || s.includes('ultralight')) return 200
+  if (s.includes('light')) return 300
+  if (s.includes('medium')) return 500
+  if (s.includes('semibold') || s.includes('semi bold') || s.includes('demibold')) return 600
+  if (s.includes('bold')) return 700
+  if (s.includes('extrabold') || s.includes('extra bold') || s.includes('ultrabold')) return 800
+  if (s.includes('black') || s.includes('heavy')) return 900
+  return 400
+}
+
+async function loadTargetFont(family: string, style: string): Promise<FontName> {
+  // First attempt: exact requested family + style
+  try {
+    const fn: FontName = { family, style }
+    await figma.loadFontAsync(fn)
+    return fn
+  } catch (_) {}
+
+  // Second attempt: loadFontSafely with numeric weight candidates
+  return await loadFontSafely(family, weightCandidateFromName(style))
+}
+
+let cachedAvailableFonts: {
+  families: string[]
+  familyStylesMap: Record<string, string[]>
+} | null = null
+
+export async function getAvailableFonts(): Promise<{
+  families: string[]
+  familyStylesMap: Record<string, string[]>
+}> {
+  if (cachedAvailableFonts) {
+    return cachedAvailableFonts
+  }
+
+  try {
+    const fonts = await figma.listAvailableFontsAsync()
+    const familyStylesMap: Record<string, string[]> = {}
+    for (const f of fonts) {
+      const fam = f.fontName.family
+      const sty = f.fontName.style
+      if (!familyStylesMap[fam]) {
+        familyStylesMap[fam] = []
+      }
+      if (!familyStylesMap[fam].includes(sty)) {
+        familyStylesMap[fam].push(sty)
+      }
+    }
+    const families = Object.keys(familyStylesMap).sort((a, b) => a.localeCompare(b))
+    cachedAvailableFonts = { families, familyStylesMap }
+    return cachedAvailableFonts
+  } catch (err) {
+    console.warn('[DesignKit] Could not list available fonts:', err)
+    return { families: [], familyStylesMap: {} }
+  }
+}
+
+export async function getDetectedFonts(
+  scope: 'selection' | 'page' = 'selection'
+): Promise<DetectedFontsData> {
+  if ('loadAsync' in figma.currentPage && typeof (figma.currentPage as any).loadAsync === 'function') {
+    try {
+      await (figma.currentPage as any).loadAsync()
+    } catch (_) {}
+  }
+
+  let targetRoots: SceneNode[] = []
+  if (scope === 'selection' && figma.currentPage.selection.length > 0) {
+    targetRoots = [...figma.currentPage.selection]
+  } else {
+    targetRoots = [...figma.currentPage.children]
+  }
+
+  const allTextNodes: TextNode[] = []
+  function collectText(node: SceneNode) {
+    if ('visible' in node && node.visible === false) return
+    if (node.type === 'TEXT') {
+      allTextNodes.push(node as TextNode)
+    }
+    if ('children' in node) {
+      for (const child of (node as ChildrenMixin).children) {
+        collectText(child)
+      }
+    }
+  }
+
+  for (const r of targetRoots) {
+    collectText(r)
+  }
+
+  const fontMap = new Map<string, {
+    family: string
+    style: string
+    count: number
+    nodeIds: Set<string>
+    sampleText: string
+  }>()
+
+  for (const t of allTextNodes) {
+    if (t.fontName !== figma.mixed) {
+      const fn = t.fontName as FontName
+      const key = `${fn.family}:::${fn.style}`
+      const existing = fontMap.get(key)
+      const snippet = t.characters.slice(0, 32).trim() || '(Empty)'
+      if (existing) {
+        existing.count++
+        existing.nodeIds.add(t.id)
+      } else {
+        fontMap.set(key, {
+          family: fn.family,
+          style: fn.style,
+          count: 1,
+          nodeIds: new Set([t.id]),
+          sampleText: snippet,
+        })
+      }
+    } else if ('getStyledTextSegments' in t) {
+      try {
+        const segs = t.getStyledTextSegments(['fontName'])
+        for (const seg of segs) {
+          const fn = seg.fontName
+          const key = `${fn.family}:::${fn.style}`
+          const existing = fontMap.get(key)
+          const snippet = (seg.characters || t.characters).slice(0, 32).trim() || '(Empty)'
+          if (existing) {
+            existing.count++
+            existing.nodeIds.add(t.id)
+          } else {
+            fontMap.set(key, {
+              family: fn.family,
+              style: fn.style,
+              count: 1,
+              nodeIds: new Set([t.id]),
+              sampleText: snippet,
+            })
+          }
+        }
+      } catch (_) {}
+    }
+  }
+
+  const fonts: DetectedFontItem[] = Array.from(fontMap.values()).map(f => ({
+    family: f.family,
+    style: f.style,
+    count: f.count,
+    nodeIds: Array.from(f.nodeIds),
+    sampleText: f.sampleText,
+  })).sort((a, b) => b.count - a.count)
+
+  const uniqueFamilies = new Set(fonts.map(f => f.family))
+  const { families: availableFamilies, familyStylesMap } = await getAvailableFonts()
+
+  return {
+    fonts,
+    totalTextNodes: allTextNodes.length,
+    uniqueFamiliesCount: uniqueFamilies.size,
+    scope,
+    availableFamilies,
+    familyStylesMap,
+  }
+}
+
+export async function replaceFont(
+  payload: ReplaceFontPayload
+): Promise<{ modifiedNodesCount: number; modifiedSegmentsCount: number }> {
+  let textNodes: TextNode[] = []
+
+  if (payload.nodeIds && payload.nodeIds.length > 0) {
+    for (const id of payload.nodeIds) {
+      const node = figma.getNodeById(id)
+      if (node && node.type === 'TEXT') {
+        textNodes.push(node as TextNode)
+      }
+    }
+  } else {
+    const roots = (payload.scope === 'selection' && figma.currentPage.selection.length > 0)
+      ? figma.currentPage.selection
+      : figma.currentPage.children
+
+    function collect(node: SceneNode) {
+      if (node.type === 'TEXT') textNodes.push(node as TextNode)
+      if ('children' in node) {
+        for (const child of (node as ChildrenMixin).children) {
+          collect(child)
+        }
+      }
+    }
+    for (const r of roots) collect(r)
+  }
+
+  if (textNodes.length === 0) {
+    throw new Error('No matching text layers found to replace font')
+  }
+
+  const loadedTargetFonts = new Map<string, FontName>()
+  const getLoadedTargetFont = async (style: string): Promise<FontName> => {
+    const cacheKey = `${payload.targetFamily}:::${style}`
+    if (loadedTargetFonts.has(cacheKey)) {
+      return loadedTargetFonts.get(cacheKey)!
+    }
+    const font = await loadTargetFont(payload.targetFamily, style)
+    loadedTargetFonts.set(cacheKey, font)
+    return font
+  }
+
+  let modifiedNodesCount = 0
+  let modifiedSegmentsCount = 0
+
+  for (const text of textNodes) {
+    try {
+      let nodeModified = false
+
+      if (text.fontName !== figma.mixed) {
+        const curFont = text.fontName as FontName
+        const matchesFamily = !payload.sourceFamily || curFont.family.toLowerCase() === payload.sourceFamily.toLowerCase()
+        const matchesStyle = !payload.sourceStyle || curFont.style.toLowerCase() === payload.sourceStyle.toLowerCase()
+
+        if (matchesFamily && matchesStyle) {
+          const effectiveStyle = payload.targetStyle === 'PRESERVE' ? curFont.style : (payload.targetStyle || 'Regular')
+          const targetFont = await getLoadedTargetFont(effectiveStyle)
+          await figma.loadFontAsync(curFont)
+          await figma.loadFontAsync(targetFont)
+          text.fontName = targetFont
+          nodeModified = true
+          modifiedSegmentsCount++
+        }
+      } else if ('getStyledTextSegments' in text) {
+        const segs = text.getStyledTextSegments(['fontName'])
+        for (const seg of segs) {
+          const curFont = seg.fontName
+          const matchesFamily = !payload.sourceFamily || curFont.family.toLowerCase() === payload.sourceFamily.toLowerCase()
+          const matchesStyle = !payload.sourceStyle || curFont.style.toLowerCase() === payload.sourceStyle.toLowerCase()
+
+          if (matchesFamily && matchesStyle) {
+            const effectiveStyle = payload.targetStyle === 'PRESERVE' ? curFont.style : (payload.targetStyle || 'Regular')
+            const targetFont = await getLoadedTargetFont(effectiveStyle)
+            await figma.loadFontAsync(curFont)
+            await figma.loadFontAsync(targetFont)
+            text.setRangeFontName(seg.start, seg.end, targetFont)
+            nodeModified = true
+            modifiedSegmentsCount++
+          }
+        }
+      }
+
+      if (nodeModified) {
+        modifiedNodesCount++
+      }
+    } catch (err) {
+      console.warn('[DesignKit FontReplacer] Could not replace font in node:', text.name, err)
+    }
+  }
+
+  return { modifiedNodesCount, modifiedSegmentsCount }
+}
+
+export function selectFontNodes(nodeIds: string[]): void {
+  const nodes: SceneNode[] = []
+  for (const id of nodeIds) {
+    const n = figma.getNodeById(id)
+    if (n && n.type !== 'PAGE' && n.type !== 'DOCUMENT') {
+      nodes.push(n as SceneNode)
+    }
+  }
+  if (nodes.length > 0) {
+    figma.currentPage.selection = nodes
+    figma.viewport.scrollAndZoomIntoView(nodes)
+  }
+}
+
+
