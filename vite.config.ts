@@ -24,6 +24,7 @@ export default defineConfig({
     alias: {
       '@shared': resolve(__dirname, 'src/shared'),
       '@utils': resolve(__dirname, 'src/ui/utils'),
+      'onnxruntime-web': 'onnxruntime-web/wasm',
     },
   },
 })

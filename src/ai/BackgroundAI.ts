@@ -1,6 +1,6 @@
 // ============================================================
-// High-Level Facade / Service for Local AI Background Removal
-// Powered exclusively by U²-NetP ONNX Runtime
+// High-Level Facade / Service for Local Background Removal
+// Powered by BRIA RMBG-1.4 High-Resolution ONNX Runtime
 // ============================================================
 
 import type {
@@ -10,14 +10,14 @@ import type {
   AIRuntimeBackend,
   AIProgressCallback,
 } from './types'
-import { U2NetPModel } from './Inference'
+import { RMBG14Model } from './Inference'
 import { refineAlphaMask } from './MaskRefiner'
 
 class BackgroundAIService {
   private activeModel: BackgroundSegmentationModel
 
   constructor(model?: BackgroundSegmentationModel) {
-    this.activeModel = model || new U2NetPModel()
+    this.activeModel = model || new RMBG14Model()
   }
 
   /**
@@ -60,6 +60,16 @@ class BackgroundAIService {
    */
   public isReady(): boolean {
     return this.activeModel.isReady()
+  }
+
+  /**
+   * Returns true if the RMBG-1.4 model is already cached in IndexedDB.
+   */
+  public async isModelCached(): Promise<boolean> {
+    if ('isModelCached' in this.activeModel && typeof (this.activeModel as any).isModelCached === 'function') {
+      return await (this.activeModel as any).isModelCached()
+    }
+    return false
   }
 
   /**

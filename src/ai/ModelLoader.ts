@@ -1,15 +1,15 @@
 // ============================================================
-// Model Loader for ONNX Runtime Web (U²-NetP Model 4.57 MB)
+// Model Loader for ONNX Runtime Web (BRIA RMBG-1.4 Quantized 44.4 MB)
 //
-// Reassembles the bundled U²-NetP binary from safe chunks and
-// initializes a single cached ONNX InferenceSession (WebGPU / WASM).
-// No IndexedDB or filesystem/fetch dependency.
+// Uses IndexedDB persistence to cache model bytes permanently.
+// Downloads streamingly with percentage progress when first requested,
+// eliminating 134MB bundle crashes on Figma startup.
 // ============================================================
 
 import * as ort from 'onnxruntime-web'
 import type { AIRuntimeBackend, AIProgressCallback } from './types'
 import { detectRuntimeBackend } from './RuntimeSelector'
-import { U2NETP_MODEL_CHUNKS } from './u2netp_chunks'
+import { ModelCache } from './ModelCache'
 
 export interface LoadedModelSession {
   session: ort.InferenceSession
@@ -18,35 +18,15 @@ export interface LoadedModelSession {
   outputName: string
 }
 
-/**
- * Reassembles the binary U²-NetP ONNX model from bundled binary chunks.
- */
-export function getBundledU2NetPBinary(): Uint8Array {
-  console.log('[AI] Loading U2NetP binary model')
-  let totalLength = 0
-  const decodedChunks: Uint8Array[] = []
+const RMBG14_CACHE_KEY = 'rmbg14_quantized_v1'
+const PRIMARY_MODEL_URL = 'https://huggingface.co/briaai/RMBG-1.4/resolve/main/onnx/model_quantized.onnx'
 
-  for (let i = 0; i < U2NETP_MODEL_CHUNKS.length; i++) {
-    const chunk = U2NETP_MODEL_CHUNKS[i]
-    const binStr = atob(chunk)
-    const len = binStr.length
-    totalLength += len
-    const bytes = new Uint8Array(len)
-    for (let j = 0; j < len; j++) {
-      bytes[j] = binStr.charCodeAt(j)
-    }
-    decodedChunks.push(bytes)
+// Configure WASM for single-threaded execution inside sandboxed iframe
+if (typeof window !== 'undefined') {
+  if (ort.env && ort.env.wasm) {
+    ort.env.wasm.numThreads = 1
+    ort.env.wasm.simd = true
   }
-
-  const combined = new Uint8Array(totalLength)
-  let offset = 0
-  for (const arr of decodedChunks) {
-    combined.set(arr, offset)
-    offset += arr.length
-  }
-
-  console.log(`[AI] U2NetP model bytes: ${combined.byteLength}`)
-  return combined
 }
 
 export class ModelLoader {
@@ -54,35 +34,53 @@ export class ModelLoader {
   private activeBackend: AIRuntimeBackend | null = null
 
   /**
-   * Returns the cached session if one already exists.
+   * Returns whether the RMBG-1.4 model is already cached locally.
+   */
+  public async isModelCached(): Promise<boolean> {
+    return await ModelCache.hasModel(RMBG14_CACHE_KEY)
+  }
+
+  /**
+   * Returns the cached session if one already exists in memory.
    */
   public getCachedSession(): LoadedModelSession | null {
     if (this.session && this.activeBackend) {
       return {
         session: this.session,
         backend: this.activeBackend,
-        inputName: this.session.inputNames[0] || 'input.1',
-        outputName: this.session.outputNames[0] || '1959',
+        inputName: this.session.inputNames[0] || 'input',
+        outputName: this.session.outputNames[0] || 'output',
       }
     }
     return null
   }
 
   /**
-   * Initialize ONNX InferenceSession from the bundled U²-NetP model.
-   * Reuses the valid session once created to prevent duplicate initializations.
+   * Initialize ONNX InferenceSession from cached IndexedDB model or CDN.
    */
   public async loadModel(onProgress?: AIProgressCallback): Promise<LoadedModelSession> {
     if (this.session && this.activeBackend) {
-      console.log('[AI] Reusing cached model session')
+      console.log('[AI] Reusing in-memory model session')
       return this.getCachedSession()!
     }
 
-    console.log('[AI] U2NetP initialization started')
-    onProgress?.('Initializing AI...')
+    // 1. Check local IndexedDB cache
+    onProgress?.('Checking local AI cache...')
+    let modelBuffer = await ModelCache.getModel(RMBG14_CACHE_KEY)
 
-    const modelBytes = getBundledU2NetPBinary()
-    return await this.createSessionFromBuffer(modelBytes, onProgress)
+    // 2. If not cached, download once from Hugging Face with progress
+    if (!modelBuffer) {
+      console.log('[AI] Model not in cache. Downloading RMBG-1.4...')
+      modelBuffer = await this.downloadModelWithProgress(PRIMARY_MODEL_URL, onProgress)
+      // Save to IndexedDB so subsequent runs are instant & offline
+      await ModelCache.saveModel(RMBG14_CACHE_KEY, modelBuffer)
+      console.log('[AI] Saved RMBG-1.4 model to IndexedDB cache')
+    } else {
+      console.log(`[AI] Loaded RMBG-1.4 model from IndexedDB cache (${modelBuffer.byteLength} bytes)`)
+      onProgress?.('Loading cached AI model...')
+    }
+
+    return await this.createSessionFromBuffer(modelBuffer, onProgress)
   }
 
   /**
@@ -93,15 +91,71 @@ export class ModelLoader {
     onProgress?: AIProgressCallback
   ): Promise<LoadedModelSession> {
     if (this.session && this.activeBackend) {
-      console.log('[AI] Reusing cached model session')
+      console.log('[AI] Reusing in-memory model session')
       return this.getCachedSession()!
     }
 
-    console.log('[AI] U2NetP initialization started')
-    const byteCount = bufferInput.byteLength
-    console.log(`[AI] U2NetP model bytes: ${byteCount}`)
+    let buffer: ArrayBuffer
+    if (bufferInput instanceof Uint8Array) {
+      const copy = new Uint8Array(bufferInput.byteLength)
+      copy.set(bufferInput)
+      buffer = copy.buffer as ArrayBuffer
+    } else {
+      buffer = bufferInput
+    }
 
-    return await this.createSessionFromBuffer(bufferInput, onProgress)
+    // Save user-provided buffer to IndexedDB cache
+    await ModelCache.saveModel(RMBG14_CACHE_KEY, buffer)
+    return await this.createSessionFromBuffer(buffer, onProgress)
+  }
+
+  /**
+   * Streams model from remote URL with byte-level progress reporting.
+   */
+  private async downloadModelWithProgress(
+    url: string,
+    onProgress?: AIProgressCallback
+  ): Promise<ArrayBuffer> {
+    onProgress?.('Connecting to AI model repository...')
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error(`Failed to download RMBG-1.4 AI model: HTTP ${response.status} ${response.statusText}`)
+    }
+
+    const contentLength = response.headers.get('content-length')
+    const totalBytes = contentLength ? parseInt(contentLength, 10) : 44403226
+    const totalMB = (totalBytes / (1024 * 1024)).toFixed(1)
+
+    if (!response.body) {
+      const buffer = await response.arrayBuffer()
+      return buffer
+    }
+
+    const reader = response.body.getReader()
+    const chunks: Uint8Array[] = []
+    let receivedBytes = 0
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (value) {
+        chunks.push(value)
+        receivedBytes += value.length
+        const receivedMB = (receivedBytes / (1024 * 1024)).toFixed(1)
+        const pct = Math.min(100, Math.round((receivedBytes / totalBytes) * 100))
+        onProgress?.(`Downloading high-accuracy AI model... ${pct}% (${receivedMB} MB / ${totalMB} MB)`)
+      }
+    }
+
+    onProgress?.('Finalizing AI model...')
+    const allBytes = new Uint8Array(receivedBytes)
+    let position = 0
+    for (const chunk of chunks) {
+      allBytes.set(chunk, position)
+      position += chunk.length
+    }
+
+    return allBytes.buffer
   }
 
   private async createSessionFromBuffer(
@@ -109,8 +163,7 @@ export class ModelLoader {
     onProgress?: AIProgressCallback
   ): Promise<LoadedModelSession> {
     const targetBackend = await detectRuntimeBackend()
-    onProgress?.('Initializing ONNX Runtime session...')
-    console.log('[AI] U2NetP session creating')
+    onProgress?.('Initializing ONNX Runtime engine...')
 
     const uint8Data = bufferInput instanceof Uint8Array
       ? bufferInput
@@ -127,10 +180,9 @@ export class ModelLoader {
           executionProviders: ['webgpu'],
         })
         backendUsed = 'webgpu'
-        console.log('[AI] WebGPU initialized')
+        console.log('[AI] WebGPU initialized successfully')
       } catch (gpuErr) {
-        console.log('[AI] WebGPU unavailable:', gpuErr)
-        console.log('[AI] Falling back to WASM')
+        console.log('[AI] WebGPU unavailable, falling back to WASM:', gpuErr)
         backendUsed = 'wasm'
       }
     }
@@ -156,24 +208,23 @@ export class ModelLoader {
           },
         }
 
-        console.log('[AI] Initializing runtime')
-        console.log('[AI] Falling back to WASM')
+        console.log('[AI] Initializing WASM runtime')
         session = await ort.InferenceSession.create(uint8Data, sessionOptions)
         backendUsed = 'wasm'
-        console.log('[AI] WASM initialized')
+        console.log('[AI] WASM runtime initialized successfully')
       } catch (wasmErr) {
         console.error('[AI] WASM initialization failed:', wasmErr)
-        throw new Error('Local AI inference is unavailable on this system.')
+        throw new Error('Local AI inference engine is unavailable on this system.')
       }
     }
 
     this.session = session
     this.activeBackend = backendUsed
 
-    const inputName = session.inputNames[0] || 'input.1'
-    const outputName = session.outputNames[0] || '1959'
+    const inputName = session.inputNames[0] || 'input'
+    const outputName = session.outputNames[0] || 'output'
 
-    console.log('[AI] U2NetP model ready')
+    console.log('[AI] RMBG-1.4 model ready')
     onProgress?.('✓ AI model ready')
 
     return {

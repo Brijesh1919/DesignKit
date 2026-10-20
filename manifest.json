@@ -7,8 +7,13 @@
   "editorType": ["figma"],
   "networkAccess": {
     "allowedDomains": [
-      "https://api.languagetool.org"
+      "https://api.languagetool.org",
+      "https://fonts.googleapis.com",
+      "https://fonts.gstatic.com",
+      "https://huggingface.co",
+      "https://*.hf.co",
+      "https://*.huggingface.co"
     ],
-    "reasoning": "Text QA grammar and spell checking"
+    "reasoning": "Google fonts styling, Text QA grammar checking, and high-accuracy RMBG-1.4 background removal AI model"
   }
 }

@@ -1,6 +1,6 @@
 // ============================================================
-// Image Preprocessing Pipeline for U²-NetP ONNX
-// Fixed 320x320 NCHW Normalized Float32 Tensor
+// Image Preprocessing Pipeline for BRIA RMBG-1.4 ONNX
+// Fixed 1024x1024 NCHW Normalized Float32 Tensor
 // ============================================================
 
 import * as ort from 'onnxruntime-web'
@@ -14,28 +14,27 @@ export interface PreprocessedData {
 }
 
 /**
- * ImageNet Mean and Standard Deviation for RGB normalization:
- * mean: [0.485, 0.456, 0.406]
- * std:  [0.229, 0.224, 0.225]
- * Formula: (pixel / 255 - mean) / std
+ * BRIA RMBG-1.4 normalization:
+ * mean = [0.5, 0.5, 0.5], std = [1.0, 1.0, 1.0]
+ * Formula: (pixel / 255.0) - 0.5
  */
-const MEAN = [0.485, 0.456, 0.406]
-const STD = [0.229, 0.224, 0.225]
+const MEAN = 0.5
+const STD = 1.0
 
 /**
- * Resizes ImageData to 320x320 and prepares an NCHW normalized Float32 Tensor [1, 3, 320, 320].
+ * Resizes ImageData to 1024x1024 and prepares an NCHW normalized Float32 Tensor [1, 3, 1024, 1024].
  */
 export function preprocessImage(
   imageData: ImageData,
-  targetWidth = 320,
-  targetHeight = 320
+  targetWidth = 1024,
+  targetHeight = 1024
 ): PreprocessedData {
   const origWidth = imageData.width
   const origHeight = imageData.height
 
-  console.log('[AI] U2NetP preprocessing started')
+  console.log(`[AI] RMBG-1.4 preprocessing started for ${origWidth}x${origHeight}`)
 
-  // 1. Create temporary canvas to resize image copy to 320x320
+  // 1. Create temporary canvas to resize image copy to 1024x1024
   const canvas = document.createElement('canvas')
   canvas.width = targetWidth
   canvas.height = targetHeight
@@ -63,22 +62,9 @@ export function preprocessImage(
   canvas.width = 0
   canvas.height = 0
 
-  // 2. Prepare NCHW Float32Array: shape [1, 3, targetHeight, targetWidth]
+  // 2. Prepare NCHW Float32Array: shape [1, 3, 1024, 1024]
   const imageSize = targetWidth * targetHeight
   const floatData = new Float32Array(3 * imageSize)
-
-  // Reference U²-Net preprocessing: find max RGB pixel value in image
-  let maxPixel = 0
-  for (let i = 0; i < imageSize; i++) {
-    const px = i * 4
-    if (pixels[px] > maxPixel) maxPixel = pixels[px]
-    if (pixels[px + 1] > maxPixel) maxPixel = pixels[px + 1]
-    if (pixels[px + 2] > maxPixel) maxPixel = pixels[px + 2]
-  }
-  if (maxPixel <= 0) maxPixel = 1
-
-  console.log(`[AI] U2NetP preprocessing maxPixel: ${maxPixel}`)
-  console.log('[AI] U2NetP input shape: [1,3,320,320]')
 
   const rOffset = 0
   const gOffset = imageSize
@@ -86,19 +72,15 @@ export function preprocessImage(
 
   for (let i = 0; i < imageSize; i++) {
     const px = i * 4
-    const r = pixels[px] / maxPixel
-    const g = pixels[px + 1] / maxPixel
-    const b = pixels[px + 2] / maxPixel
-
-    floatData[rOffset + i] = (r - MEAN[0]) / STD[0]
-    floatData[gOffset + i] = (g - MEAN[1]) / STD[1]
-    floatData[bOffset + i] = (b - MEAN[2]) / STD[2]
+    floatData[rOffset + i] = (pixels[px] / 255.0 - MEAN) / STD
+    floatData[gOffset + i] = (pixels[px + 1] / 255.0 - MEAN) / STD
+    floatData[bOffset + i] = (pixels[px + 2] / 255.0 - MEAN) / STD
   }
 
-  // 3. Create ONNX Tensor with shape [1, 3, 320, 320]
+  // 3. Create ONNX Tensor with shape [1, 3, 1024, 1024]
   const tensor = new ort.Tensor('float32', floatData, [1, 3, targetHeight, targetWidth])
 
-  console.log('[AI] U2NetP input tensor: [1,3,320,320]')
+  console.log('[AI] RMBG-1.4 input tensor ready: [1, 3, 1024, 1024]')
 
   return {
     tensor,
