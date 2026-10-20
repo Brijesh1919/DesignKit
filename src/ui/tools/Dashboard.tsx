@@ -1,7 +1,6 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { CATEGORIES, ALL_TOOLS } from '../registry/toolRegistry'
 import type { SelectionInfo } from '../../shared/types'
-import type { ToolCategoryId } from '../registry/toolRegistry'
 
 interface Props {
   selection: SelectionInfo | null
@@ -9,65 +8,189 @@ interface Props {
   onToolSelect: (toolId: string) => void
 }
 
+// ---- Distinct Colorful SVG Icons for Quick Access Tools ----
+
+const ColorPaletteIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+    <path
+      d="M12 2C6.48 2 2 6.48 2 12c0 5.52 4.48 10 10 10 .93 0 1.68-.75 1.68-1.69 0-.44-.18-.84-.44-1.13-.29-.29-.44-.66-.44-1.13 0-.93.75-1.69 1.69-1.69h1.99c3.05 0 5.52-2.47 5.52-5.52C21.98 6.48 17.5 2 12 2z"
+      stroke="#6366F1"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <circle cx="13.5" cy="6.5" r="1.6" fill="#EF4444" />
+    <circle cx="17.5" cy="10.5" r="1.6" fill="#F59E0B" />
+    <circle cx="8.5" cy="7.5" r="1.6" fill="#10B981" />
+    <circle cx="6.5" cy="12.5" r="1.6" fill="#3B82F6" />
+  </svg>
+)
+
+const ColorShadesIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+    <rect x="2.5" y="4" width="4.5" height="16" rx="2" fill="#93C5FD" stroke="#60A5FA" strokeWidth="1.2" />
+    <rect x="7" y="4" width="4.5" height="16" rx="1" fill="#3B82F6" stroke="#2563EB" strokeWidth="1.2" />
+    <rect x="12" y="4" width="4.5" height="16" rx="1" fill="#1D4ED8" stroke="#1E40AF" strokeWidth="1.2" />
+    <rect x="17" y="4" width="4.5" height="16" rx="2" fill="#1E3A8A" stroke="#172554" strokeWidth="1.2" />
+  </svg>
+)
+
+const TypeScaleIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 6h9M7.5 6v13" stroke="#8B5CF6" strokeWidth="2.2" />
+    <path d="M14 11h7M17.5 11v8" stroke="#EC4899" strokeWidth="1.8" />
+    <circle cx="17.5" cy="5" r="1.2" fill="#F59E0B" />
+    <circle cx="21" cy="5" r="1.2" fill="#F59E0B" />
+  </svg>
+)
+
+const BgRemoverIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14.5 4.5l5 5L7.5 21.5H3v-4.5L14.5 4.5z" stroke="#0284C7" strokeWidth="1.8" />
+    <line x1="11.5" y1="7.5" x2="16.5" y2="12.5" stroke="#38BDF8" strokeWidth="1.5" />
+    <path d="M19 2v4M17 4h4" stroke="#F59E0B" strokeWidth="1.6" />
+    <path d="M19 12v3M17.5 13.5h3" stroke="#EC4899" strokeWidth="1.4" />
+    <circle cx="4" cy="5" r="1.2" fill="#8B5CF6" />
+  </svg>
+)
+
+const AutoLayoutIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="3.5" stroke="#10B981" strokeWidth="1.8" />
+    <rect x="6.5" y="6.5" width="4.5" height="11" rx="1.5" fill="#34D399" />
+    <rect x="13" y="6.5" width="4.5" height="11" rx="1.5" fill="#059669" />
+  </svg>
+)
+
+const CssGeneratorIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="7 7 2 12 7 17" stroke="#F97316" strokeWidth="2.2" />
+    <polyline points="17 7 22 12 17 17" stroke="#F97316" strokeWidth="2.2" />
+    <line x1="14" y1="4" x2="10" y2="20" stroke="#EC4899" strokeWidth="2" />
+  </svg>
+)
+
+const TextQAIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="#3B82F6" strokeWidth="1.8" />
+    <polyline points="14 2 14 8 20 8" stroke="#60A5FA" strokeWidth="1.6" />
+    <path d="M8 15l2.5 2.5 5-5" stroke="#10B981" strokeWidth="2.2" />
+  </svg>
+)
+
+const FontReplacerIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 19L8.5 5L13 19M5.5 15H11.5" stroke="#6366F1" strokeWidth="2" />
+    <path d="M16 9.5h6m-2.5-2.5l2.5 2.5-2.5 2.5" stroke="#EC4899" strokeWidth="1.8" />
+    <path d="M22 16.5h-6m2.5 2.5l-2.5-2.5 2.5-2.5" stroke="#06B6D4" strokeWidth="1.8" />
+  </svg>
+)
+
 const QuickToolCard: React.FC<{
   name: string
   desc: string
-  color: string
+  icon: React.ReactNode
   onClick: () => void
   id: string
-}> = ({ name, desc, color, onClick, id }) => (
-  <button
-    id={id}
-    onClick={onClick}
-    style={{
-      display: 'flex',
-      flexDirection: 'column',
-      gap: 6,
-      padding: 'var(--sp-4)',
-      background: 'var(--c-surface)',
-      border: '1px solid var(--c-border)',
-      borderRadius: 'var(--r-xl)',
-      cursor: 'pointer',
-      textAlign: 'left',
-      transition: 'box-shadow 150ms ease, transform 150ms ease, border-color 150ms ease',
-      boxShadow: 'var(--shadow-xs)',
-    }}
-    onMouseEnter={e => {
-      e.currentTarget.style.boxShadow = 'var(--shadow-md)'
-      e.currentTarget.style.transform = 'translateY(-1px)'
-      e.currentTarget.style.borderColor = 'var(--c-border-strong)'
-    }}
-    onMouseLeave={e => {
-      e.currentTarget.style.boxShadow = 'var(--shadow-xs)'
-      e.currentTarget.style.transform = ''
-      e.currentTarget.style.borderColor = 'var(--c-border)'
-    }}
-    onMouseDown={e => { e.currentTarget.style.transform = 'scale(0.98)' }}
-    onMouseUp={e => { e.currentTarget.style.transform = 'translateY(-1px)' }}
-  >
-    <div style={{
-      width: 32,
-      height: 32,
-      borderRadius: 'var(--r-md)',
-      background: color,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-    }} />
-    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text-primary)' }}>{name}</div>
-    <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)', lineHeight: 1.4 }}>{desc}</div>
-  </button>
-)
+}> = ({ name, desc, icon, onClick, id }) => {
+  const [isHovered, setIsHovered] = useState(false)
+
+  return (
+    <button
+      id={id}
+      onClick={onClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        padding: 'var(--sp-4)',
+        background: 'var(--c-surface)',
+        border: `1px solid ${isHovered ? 'var(--c-accent)' : 'var(--c-border)'}`,
+        borderRadius: 'var(--r-xl)',
+        cursor: 'pointer',
+        textAlign: 'left',
+        transition: 'all 150ms ease',
+        boxShadow: isHovered ? 'var(--shadow-md)' : 'var(--shadow-xs)',
+        transform: isHovered ? 'translateY(-2px)' : 'none',
+      }}
+      onMouseDown={e => { e.currentTarget.style.transform = 'scale(0.98)' }}
+      onMouseUp={e => { e.currentTarget.style.transform = 'translateY(-2px)' }}
+    >
+      <div
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 'var(--r-lg, 8px)',
+          background: isHovered ? 'var(--c-surface-hover, #F1F5F9)' : 'var(--c-bg, #F8FAFC)',
+          border: `1px solid ${isHovered ? 'var(--c-border-strong, #CBD5E1)' : 'var(--c-border, #E2E8F0)'}`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          transition: 'all 150ms ease',
+        }}
+      >
+        {icon}
+      </div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text-primary)' }}>{name}</div>
+      <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)', lineHeight: 1.4 }}>{desc}</div>
+    </button>
+  )
+}
 
 const QUICK_TOOLS = [
-  { toolId: 'color-palette',       name: 'Color Palette',   desc: 'Generate shade scales',       color: 'linear-gradient(135deg, #2563EB, #7C3AED)' },
-  { toolId: 'color-harmony',       name: 'Color Harmony',   desc: 'Complementary & analogous',   color: 'linear-gradient(135deg, #059669, #2563EB)' },
-  { toolId: 'contrast-checker',    name: 'Contrast',        desc: 'WCAG AA/AAA check',           color: 'linear-gradient(135deg, #DC2626, #D97706)' },
-  { toolId: 'typography-scale',    name: 'Type Scale',      desc: 'Musical ratio scales',        color: 'linear-gradient(135deg, #7C3AED, #DB2777)' },
-  { toolId: 'auto-layout-optimizer', name: 'Auto Layout',  desc: 'Optimize frames',             color: 'linear-gradient(135deg, #0891B2, #059669)' },
-  { toolId: 'spacing-normalizer',  name: 'Spacing',         desc: 'Normalize to 8pt grid',      color: 'linear-gradient(135deg, #D97706, #DC2626)' },
-  { toolId: 'image-color-extractor', name: 'Image Colors', desc: 'Extract dominant colors',     color: 'linear-gradient(135deg, #BE185D, #7C3AED)' },
-  { toolId: 'background-remover',  name: 'BG Remover',     desc: 'Remove solid backgrounds',    color: 'linear-gradient(135deg, #1D4ED8, #0891B2)' },
+  // --- Row 1 ---
+  {
+    toolId: 'color-palette',
+    name: 'Color Palette',
+    desc: 'Generate shade scales',
+    icon: <ColorPaletteIcon />,
+  },
+  {
+    toolId: 'color-shades',
+    name: 'Color Shades',
+    desc: 'Fine-tune tint & shade',
+    icon: <ColorShadesIcon />,
+  },
+  {
+    toolId: 'typography-scale',
+    name: 'Type Scale',
+    desc: 'Musical ratio scales',
+    icon: <TypeScaleIcon />,
+  },
+  {
+    toolId: 'background-remover',
+    name: 'BG Remover',
+    desc: 'Studio AI cutout (1024px)',
+    icon: <BgRemoverIcon />,
+  },
+  // --- Row 2 ---
+  {
+    toolId: 'auto-layout-optimizer',
+    name: 'Auto Layout',
+    desc: 'Optimize frames',
+    icon: <AutoLayoutIcon />,
+  },
+  {
+    toolId: 'css-generator',
+    name: 'CSS Generator',
+    desc: 'Export CSS from layers',
+    icon: <CssGeneratorIcon />,
+  },
+  {
+    toolId: 'text-qa',
+    name: 'Text QA',
+    desc: 'Spelling & grammar audit',
+    icon: <TextQAIcon />,
+  },
+  {
+    toolId: 'font-replacer',
+    name: 'Font Replacer',
+    desc: 'Batch replace font styles',
+    icon: <FontReplacerIcon />,
+  },
 ]
 
 export const Dashboard: React.FC<Props> = ({ selection, recentToolIds, onToolSelect }) => {
@@ -144,7 +267,7 @@ export const Dashboard: React.FC<Props> = ({ selection, recentToolIds, onToolSel
               id={`dashboard-quick-${tool.toolId}`}
               name={tool.name}
               desc={tool.desc}
-              color={tool.color}
+              icon={tool.icon}
               onClick={() => onToolSelect(tool.toolId)}
             />
           ))}
@@ -205,9 +328,9 @@ export const Dashboard: React.FC<Props> = ({ selection, recentToolIds, onToolSel
       }}>
         {[
           { label: 'Tools Ready', value: String(ALL_TOOLS.filter(t => t.implemented).length) },
-          { label: 'Categories', value: '8' },
-          { label: 'No AI', value: '✓' },
-          { label: 'No Backend', value: '✓' },
+          { label: 'Categories', value: String(CATEGORIES.length) },
+          { label: 'Studio AI', value: '✓' },
+          { label: 'Offline Ready', value: '✓' },
         ].map(stat => (
           <div key={stat.label} style={{ textAlign: 'center' }}>
             <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '-0.5px' }}>

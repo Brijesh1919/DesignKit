@@ -143,7 +143,24 @@ export const MakeResponsive: React.FC<Props> = ({ selection, onSuccess, onError 
     <div className="tool-view">
       <div className="tool-header">
         <div className="tool-breadcrumb">Responsive</div>
-        <h1 className="tool-title">Make Responsive</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+          <h1 className="tool-title" style={{ margin: 0 }}>Make Responsive</h1>
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+              color: 'var(--c-warning-text, #92400e)',
+              background: 'var(--c-warning-subtle, #fffbeb)',
+              border: '1px solid var(--c-warning-border, #fde68a)',
+              padding: '2px 8px',
+              borderRadius: 12,
+            }}
+          >
+            Under Development
+          </span>
+        </div>
         <p className="tool-description">
           Transform your design for any device. Choose a target viewport, preview what will change,
           then apply — a new responsive frame is created next to the original.
@@ -151,6 +168,30 @@ export const MakeResponsive: React.FC<Props> = ({ selection, onSuccess, onError 
       </div>
 
       <div className="tool-body">
+        {/* Development Notice */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 'var(--sp-3)',
+            padding: 'var(--sp-3) var(--sp-4)',
+            background: 'var(--c-warning-subtle, #FFFBEB)',
+            border: '1px solid var(--c-warning-border, #FDE68A)',
+            borderRadius: 'var(--radius-md, 8px)',
+            color: 'var(--c-warning-text, #92400E)',
+          }}
+        >
+          <span style={{ fontSize: 16, lineHeight: 1.2 }}>⚠️</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 2 }}>
+              Notice: This tool is currently under development
+            </div>
+            <div style={{ fontSize: 11, lineHeight: 1.5, opacity: 0.9 }}>
+              Automated responsive frame generation and layout reflow are still experimental. We recommend reviewing the generated layout and making minor adjustments for complex nested elements.
+            </div>
+          </div>
+        </div>
+
         <SelectionBanner
           selection={selection}
           selectionHint="Select a top-level frame to transform into a responsive layout."

@@ -61,7 +61,6 @@ const TouchTargetChecker = lazy(() => import('../tools/accessibility/TouchTarget
 const TextSizeChecker    = lazy(() => import('../tools/accessibility/TextSizeChecker'))
 const ResponsiveChecker  = lazy(() => import('../tools/responsive/ResponsiveChecker'))
 const BreakpointPreview  = lazy(() => import('../tools/responsive/BreakpointPreview'))
-const ResponsiveCss      = lazy(() => import('../tools/responsive/ResponsiveCss'))
 const MakeResponsive     = lazy(() => import('../tools/responsive/MakeResponsive'))
 const DesignAudit        = lazy(() => import('../tools/cleanup/DesignAudit'))
 const LayerCleanup       = lazy(() => import('../tools/cleanup/LayerCleanup'))
@@ -351,15 +350,6 @@ export const CATEGORIES: CategoryDef[] = [
         categoryId: 'responsive',
         implemented: true,
         component: BreakpointPreview,
-      },
-      {
-        id: 'responsive-css',
-        name: 'Responsive CSS',
-        description: 'Generate CSS with media queries for Tablet, Mobile, and Small Mobile',
-        keywords: ['responsive', 'css', 'media queries', 'breakpoints', 'code'],
-        categoryId: 'responsive',
-        implemented: true,
-        component: ResponsiveCss,
       },
     ],
   },
