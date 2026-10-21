@@ -265,57 +265,60 @@ export const ContrastChecker: React.FC<Props> = ({
       {mode === 'manual' && (
         <div className="tool-split-view">
           {/* Left Column: Controls & Score */}
-          <div className="tool-pane-left" style={{ width: 310 }}>
+          <div className="tool-pane-left" style={{ width: 320 }}>
             {/* Color pickers */}
             <div className="card">
               <div className="card-header" style={{ padding: 'var(--sp-3) var(--sp-4) 0' }}>
                 <span className="card-title">Color Inputs</span>
               </div>
-              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
-                <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'flex-end' }}>
-                  <div className="field" style={{ flex: 1, margin: 0 }}>
-                    <label className="field-label" style={{ fontSize: 11 }}>Foreground</label>
-                    <div className="color-field">
-                      <div className="color-field-swatch" style={{ background: fgHex }}>
-                        <input type="color" value={fgHex} onChange={e => handleFgChange(e.target.value)} />
-                      </div>
-                      <input
-                        className="color-field-input"
-                        type="text"
-                        value={fgInput}
-                        onChange={e => handleFgChange(e.target.value)}
-                        spellCheck={false}
-                      />
+              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', padding: 'var(--sp-3) var(--sp-4)' }}>
+                <div className="field" style={{ margin: 0, minWidth: 0 }}>
+                  <label className="field-label" style={{ fontSize: 11 }}>Foreground</label>
+                  <div className="color-field">
+                    <div className="color-field-swatch" style={{ background: fgHex }}>
+                      <input type="color" value={fgHex} onChange={e => handleFgChange(e.target.value)} />
                     </div>
+                    <input
+                      className="color-field-input"
+                      type="text"
+                      value={fgInput}
+                      onChange={e => handleFgChange(e.target.value)}
+                      placeholder="#2563EB"
+                      spellCheck={false}
+                    />
                   </div>
+                </div>
 
-                  {/* Swap button */}
+                {/* Swap button */}
+                <div style={{ display: 'flex', justifyContent: 'center', margin: '2px 0' }}>
                   <button
-                    className="btn btn-secondary"
+                    className="btn btn-secondary btn-sm"
                     onClick={handleSwap}
-                    title="Swap colors"
+                    title="Swap foreground and background colors"
                     id="contrast-swap-btn"
-                    style={{ marginBottom: 0, padding: '0 8px', height: 32 }}
+                    style={{ height: 26, padding: '0 10px', fontSize: 11, borderRadius: 'var(--r-full)', display: 'flex', alignItems: 'center', gap: 6 }}
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M7 16V4m0 0L3 8m4-4 4 4M17 8v12m0 0 4-4m-4 4-4-4"/>
                     </svg>
+                    <span>Swap Colors</span>
                   </button>
+                </div>
 
-                  <div className="field" style={{ flex: 1, margin: 0 }}>
-                    <label className="field-label" style={{ fontSize: 11 }}>Background</label>
-                    <div className="color-field">
-                      <div className="color-field-swatch" style={{ background: bgHex }}>
-                        <input type="color" value={bgHex} onChange={e => handleBgChange(e.target.value)} />
-                      </div>
-                      <input
-                        className="color-field-input"
-                        type="text"
-                        value={bgInput}
-                        onChange={e => handleBgChange(e.target.value)}
-                        spellCheck={false}
-                      />
+                <div className="field" style={{ margin: 0, minWidth: 0 }}>
+                  <label className="field-label" style={{ fontSize: 11 }}>Background</label>
+                  <div className="color-field">
+                    <div className="color-field-swatch" style={{ background: bgHex }}>
+                      <input type="color" value={bgHex} onChange={e => handleBgChange(e.target.value)} />
                     </div>
+                    <input
+                      className="color-field-input"
+                      type="text"
+                      value={bgInput}
+                      onChange={e => handleBgChange(e.target.value)}
+                      placeholder="#FFFFFF"
+                      spellCheck={false}
+                    />
                   </div>
                 </div>
               </div>

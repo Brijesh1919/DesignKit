@@ -152,7 +152,7 @@ export const DesignTokenExport: React.FC<Props> = ({ selection, onSuccess, onErr
             <div style={{ fontSize: 13, color: 'var(--c-text-tertiary)' }}>Extracting design tokens…</div>
           </div>
         ) : data ? (
-          <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div className="card" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div
               className="card-header"
               style={{

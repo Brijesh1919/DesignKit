@@ -169,7 +169,7 @@ export const StyleCleanup: React.FC<Props> = ({ onSuccess, onError }) => {
             </div>
           </div>
         ) : analysis ? (
-          <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div className="card" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             {/* Tab header */}
             <div
               className="card-header"

@@ -175,7 +175,7 @@ export const ColorExport: React.FC<Props> = ({ selection, onSuccess, onError }) 
             </div>
 
             {/* Swatches List */}
-            <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div className="card" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div className="card-header" style={{ padding: 'var(--sp-2) var(--sp-3)', flexShrink: 0 }}>
                 <span className="card-title" style={{ fontSize: 12 }}>
                   {colors.length} Swatches ({data?.totalUsages ?? 0} uses)
@@ -250,8 +250,8 @@ export const ColorExport: React.FC<Props> = ({ selection, onSuccess, onError }) 
           </div>
 
           {/* Right Pane: Code Output Preview */}
-          <div className="tool-pane-right" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div className="tool-pane-right" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div className="card" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div
                 className="card-header"
                 style={{

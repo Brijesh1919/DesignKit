@@ -169,7 +169,7 @@ export const LayerNaming: React.FC<Props> = ({ selection, onSuccess, onError }) 
             </div>
           </div>
         ) : items.length > 0 ? (
-          <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div className="card" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div
               className="card-header"
               style={{

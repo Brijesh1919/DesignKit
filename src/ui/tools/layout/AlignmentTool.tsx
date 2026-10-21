@@ -112,7 +112,7 @@ export const AlignmentTool: React.FC<Props> = ({ selection, onSuccess, onError }
       <div className="tool-split-view">
         {/* Left Column: Horizontal Alignment */}
         <div className="tool-pane-left" style={{ width: '50%' }}>
-          <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <div className="card" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             <div className="card-header" style={{ padding: 'var(--sp-3) var(--sp-4)', borderBottom: '1px solid var(--c-border-subtle)' }}>
               <span className="card-title">Horizontal Alignment & Spacing</span>
             </div>
@@ -143,7 +143,7 @@ export const AlignmentTool: React.FC<Props> = ({ selection, onSuccess, onError }
 
         {/* Right Column: Vertical Alignment */}
         <div className="tool-pane-right">
-          <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <div className="card" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             <div className="card-header" style={{ padding: 'var(--sp-3) var(--sp-4)', borderBottom: '1px solid var(--c-border-subtle)' }}>
               <span className="card-title">Vertical Alignment & Spacing</span>
             </div>

@@ -118,14 +118,14 @@ export const ColorHarmony: React.FC<Props> = ({ selection, onSuccess, onError })
 
       <div className="tool-split-view">
         {/* Left Column: Base Color & Type Selector */}
-        <div className="tool-pane-left" style={{ width: 290 }}>
+        <div className="tool-pane-left" style={{ width: 320 }}>
           {/* Input */}
           <div className="card">
             <div className="card-header" style={{ padding: 'var(--sp-2) var(--sp-3) 0' }}>
               <span className="card-title" style={{ fontSize: 12 }}>Base Color</span>
             </div>
             <div className="card-body" style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center', padding: 'var(--sp-3)' }}>
-              <div className="field" style={{ flex: 1, margin: 0 }}>
+              <div className="field" style={{ flex: 1, margin: 0, minWidth: 0 }}>
                 <div className="color-field">
                   <div className="color-field-swatch" style={{ background: baseHex }}>
                     <input
@@ -144,7 +144,7 @@ export const ColorHarmony: React.FC<Props> = ({ selection, onSuccess, onError })
                   />
                 </div>
               </div>
-              <button className="btn btn-primary btn-sm" onClick={handleGenerate} id="harmony-generate-btn" style={{ height: 32 }}>
+              <button className="btn btn-primary btn-sm" onClick={handleGenerate} id="harmony-generate-btn" style={{ height: 32, flexShrink: 0 }}>
                 Generate
               </button>
             </div>

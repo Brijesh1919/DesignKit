@@ -138,7 +138,7 @@ const PaletteRow: React.FC<PaletteRowProps> = ({
   }
 
   return (
-    <div className="card" style={{ overflow: 'hidden' }}>
+    <div className="card" style={{ overflow: 'hidden', flexShrink: 0 }}>
       {/* Row header */}
       <div
         style={{
@@ -182,7 +182,7 @@ const PaletteRow: React.FC<PaletteRowProps> = ({
 
       {/* Controls */}
       <div style={{ padding: 'var(--sp-3) var(--sp-4)', display: 'flex', gap: 'var(--sp-3)', alignItems: 'flex-end' }}>
-        <div className="field" style={{ flex: 1 }}>
+        <div className="field" style={{ flex: 1, minWidth: 0 }}>
           <label className="field-label">Base Color</label>
           <div className="color-field">
             <div
@@ -206,7 +206,7 @@ const PaletteRow: React.FC<PaletteRowProps> = ({
           </div>
         </div>
 
-        <div className="field" style={{ flex: 1 }}>
+        <div className="field" style={{ flex: 1, minWidth: 0 }}>
           <label className="field-label">Group Name</label>
           <input
             className="input"

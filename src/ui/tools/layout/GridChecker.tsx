@@ -174,7 +174,7 @@ export const GridChecker: React.FC<Props> = ({ selection, onSuccess, onError }) 
         )}
 
         {/* Scrollable Issues List */}
-        <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div className="card" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div className="tool-scroll-list" style={{ flex: 1, padding: 0 }}>
             {isLoading ? (
               <div style={{ padding: 'var(--sp-8)', textAlign: 'center', color: 'var(--c-text-tertiary)', fontSize: 'var(--fs-sm)' }}>

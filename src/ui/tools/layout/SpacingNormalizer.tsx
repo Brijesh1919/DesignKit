@@ -182,8 +182,8 @@ export const SpacingNormalizer: React.FC<Props> = ({ selection, spacingInfo, onS
         </div>
 
         {/* Right Pane: Gaps Analysis (flex: 1) */}
-        <div className="tool-pane-right" style={{ overflow: 'hidden' }}>
-          <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div className="tool-pane-right" style={{ overflow: 'hidden', minHeight: 0 }}>
+          <div className="card" style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div className="card-header" style={{ padding: '8px 12px', borderBottom: '1px solid var(--c-border-subtle)' }}>
               <span className="card-title">Current Gaps Analysis</span>
               {analysed && (

@@ -184,8 +184,8 @@ export const ImageColorExtractor: React.FC<Props> = ({
           </div>
 
           {/* Right Pane: Extracted Palette List */}
-          <div className="tool-pane-right" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div className="tool-pane-right" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div className="card" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span className="card-title">
                   {colors.length > 0 ? `Extracted Palette (${colors.length})` : 'Color Swatches'}
