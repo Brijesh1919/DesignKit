@@ -80,121 +80,130 @@ export const LayerCleanup: React.FC<Props> = ({ selection, onSuccess, onError })
         </p>
       </div>
 
-      <div className="tool-body">
+      <div className="tool-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', overflow: 'hidden' }}>
         <SelectionBanner
           selection={selection}
           selectionHint="Select layers to clean, or switch to Current Page."
         />
 
         {/* Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
-            <button
-              className={`btn btn-sm ${scope === 'selection' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => {
-                setScope('selection')
-                requestAnalysis('selection')
-              }}
-            >
-              Selected Layers
-            </button>
-            <button
-              className={`btn btn-sm ${scope === 'page' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => {
-                setScope('page')
-                requestAnalysis('page')
-              }}
-            >
-              Current Page
-            </button>
-          </div>
+        <div className="card" style={{ padding: 'var(--sp-2) var(--sp-3)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--sp-2)' }}>
+            <div style={{ display: 'inline-flex', background: 'var(--c-bg)', padding: 2, borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)' }}>
+              <button
+                className={`btn btn-sm ${scope === 'selection' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => {
+                  setScope('selection')
+                  requestAnalysis('selection')
+                }}
+                style={{ height: 26, fontSize: 11, padding: '0 var(--sp-2)' }}
+              >
+                Selected Layers
+              </button>
+              <button
+                className={`btn btn-sm ${scope === 'page' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => {
+                  setScope('page')
+                  requestAnalysis('page')
+                }}
+                style={{ height: 26, fontSize: 11, padding: '0 var(--sp-2)' }}
+              >
+                Current Page
+              </button>
+            </div>
 
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={() => requestAnalysis(scope)}
-            disabled={loading}
-          >
-            {loading ? 'Scanning…' : 'Re-scan'}
-          </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+              {candidates.length > 0 && (
+                <>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => toggleAll(true)}
+                    style={{ fontSize: 11, height: 26, padding: '0 6px' }}
+                  >
+                    Select All
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => toggleAll(false)}
+                    style={{ fontSize: 11, height: 26, padding: '0 6px' }}
+                  >
+                    Deselect All
+                  </button>
+                </>
+              )}
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => requestAnalysis(scope)}
+                disabled={loading}
+                style={{ height: 26, fontSize: 11 }}
+              >
+                {loading ? 'Scanning…' : 'Re-scan'}
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Results */}
         {loading ? (
-          <div className="empty-state">
+          <div className="empty-state" style={{ flex: 1 }}>
             <div style={{ fontSize: 13, color: 'var(--c-text-tertiary)' }}>Scanning for cleanup targets…</div>
           </div>
         ) : candidates.length === 0 && analyzed ? (
-          <div className="empty-state">
+          <div className="empty-state" style={{ flex: 1 }}>
             <div className="empty-state-title">✨ Layer structure is perfectly clean!</div>
             <div className="empty-state-body">
               No empty frames, empty groups, or redundant wrappers found.
             </div>
           </div>
         ) : candidates.length > 0 ? (
-          <div className="card" style={{ overflow: 'hidden' }}>
+          <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div
               className="card-header"
               style={{
-                paddingBottom: 'var(--sp-3)',
+                padding: 'var(--sp-2) var(--sp-3)',
                 borderBottom: '1px solid var(--c-border-subtle)',
+                flexShrink: 0,
               }}
             >
-              <div className="card-title">
+              <div className="card-title" style={{ fontSize: 12 }}>
                 {candidates.length} Cleanup Candidate{candidates.length !== 1 ? 's' : ''} Found
-              </div>
-              <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => toggleAll(true)}
-                  style={{ fontSize: 11 }}
-                >
-                  Select All
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => toggleAll(false)}
-                  style={{ fontSize: 11 }}
-                >
-                  Deselect All
-                </button>
               </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 380, overflowY: 'auto' }}>
-              {candidates.map((candidate, idx) => (
+            <div className="tool-scroll-list" style={{ flex: 1, padding: 0 }}>
+              {candidates.map((candidate) => (
                 <div
                   key={candidate.nodeId}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    padding: 'var(--sp-3) var(--sp-4)',
-                    borderBottom:
-                      idx < candidates.length - 1 ? '1px solid var(--c-border-subtle)' : 'none',
+                    padding: 'var(--sp-2) var(--sp-3)',
+                    borderBottom: '1px solid var(--c-border-subtle)',
                     background: candidate.checked ? 'var(--c-surface)' : 'var(--c-bg)',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', minWidth: 0, flex: 1, marginRight: 'var(--sp-2)' }}>
                     <input
                       type="checkbox"
                       checked={candidate.checked}
                       onChange={() => toggleCandidate(candidate.nodeId)}
-                      style={{ cursor: 'pointer', accentColor: 'var(--c-accent)' }}
+                      style={{ cursor: 'pointer', accentColor: 'var(--c-primary)' }}
                     />
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-1)' }}>
                         <span
-                          style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text-primary)', cursor: 'pointer' }}
+                          style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-primary)', cursor: 'pointer' }}
                           onClick={() => handleFocus(candidate.nodeId)}
                           title="Click to view in Figma"
                         >
-                          {candidate.nodeName}
+                          {candidate.nodeName} <span style={{ fontSize: 10, color: 'var(--c-primary)' }}>↗</span>
                         </span>
-                        <span className="tag" style={{ fontSize: 10 }}>
+                        <span className="tag" style={{ fontSize: 9, padding: '1px 5px' }}>
                           {candidate.nodeType}
                         </span>
                       </div>
-                      <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)', marginTop: 2 }}>
+                      <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)', marginTop: 1 }}>
                         {candidate.reason}
                       </div>
                     </div>
@@ -202,7 +211,7 @@ export const LayerCleanup: React.FC<Props> = ({ selection, onSuccess, onError })
 
                   <span
                     className={candidate.action === 'unwrap' ? 'tag tag-accent' : 'tag tag-danger'}
-                    style={{ fontSize: 10, fontWeight: 600 }}
+                    style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', flexShrink: 0 }}
                   >
                     {candidate.action === 'unwrap' ? 'Unwrap' : 'Delete'}
                   </span>
@@ -210,14 +219,12 @@ export const LayerCleanup: React.FC<Props> = ({ selection, onSuccess, onError })
               ))}
             </div>
 
+            {/* Pinned Action Footer */}
             <div
+              className="tool-footer"
               style={{
-                padding: 'var(--sp-3) var(--sp-4)',
-                background: 'var(--c-surface-subtle)',
-                borderTop: '1px solid var(--c-border-subtle)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
+                padding: 'var(--sp-2) var(--sp-4)',
+                flexShrink: 0,
               }}
             >
               <span style={{ fontSize: 12, color: 'var(--c-text-secondary)' }}>
@@ -228,6 +235,7 @@ export const LayerCleanup: React.FC<Props> = ({ selection, onSuccess, onError })
                 onClick={handleApply}
                 disabled={selectedCount === 0}
                 id="apply-layer-cleanup-btn"
+                style={{ height: 30 }}
               >
                 Clean Selected Layers ({selectedCount})
               </button>

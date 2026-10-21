@@ -87,10 +87,16 @@ export const BreakpointPreview: React.FC<Props> = ({ selection, onSuccess, onErr
   const currentAudit = analysis?.results.find(r => r.viewportId === (isCustom ? 'custom' : activePresetId))
   const hasFrame = selection && selection.count > 0 && (selection.hasFrame || selection.types.some(t => t === 'FRAME' || t === 'COMPONENT' || t === 'GROUP' || t === 'SECTION'))
 
-  // Calculate container scale to fit within preview viewport box (~420px max width)
-  const previewBoxWidth = 360
-  const scale = Math.min(1, previewBoxWidth / (currentPreset?.width || 390))
-  const previewHeight = Math.round((currentPreset?.height || 844) * scale)
+  // Calculate container scale to fit within right preview pane
+  const previewBoxWidth = 330
+  const previewBoxHeight = 350
+  const scale = Math.min(
+    1,
+    previewBoxWidth / (currentPreset?.width || 390),
+    previewBoxHeight / (currentPreset?.height || 844)
+  )
+  const simWidth = Math.round((currentPreset?.width || 390) * scale)
+  const simHeight = Math.round((currentPreset?.height || 844) * scale)
   const frameWidth = analysis?.frameWidth || 1440
   const overflowDelta = Math.max(0, frameWidth - currentPreset.width)
 
@@ -110,7 +116,7 @@ export const BreakpointPreview: React.FC<Props> = ({ selection, onSuccess, onErr
           selectionHint="Select a frame to simulate and inspect across viewport breakpoints."
         />
 
-        {/* Viewport Preset Tabs */}
+        {/* Viewport Preset Tabs & Custom Input Bar */}
         <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap', alignItems: 'center' }}>
           {RESPONSIVE_PRESETS.map(p => {
             const isSelected = !isCustom && activePresetId === p.id
@@ -119,7 +125,7 @@ export const BreakpointPreview: React.FC<Props> = ({ selection, onSuccess, onErr
                 key={p.id}
                 className={`btn btn-sm ${isSelected ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => handleSelectPreset(p)}
-                style={{ fontSize: 12, padding: '4px 10px' }}
+                style={{ fontSize: 11, padding: '3px 8px' }}
               >
                 {p.name} ({p.width}px)
               </button>
@@ -128,129 +134,191 @@ export const BreakpointPreview: React.FC<Props> = ({ selection, onSuccess, onErr
           <button
             className={`btn btn-sm ${isCustom ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setIsCustom(true)}
-            style={{ fontSize: 12, padding: '4px 10px' }}
+            style={{ fontSize: 11, padding: '3px 8px' }}
           >
             Custom
           </button>
+
+          {isCustom && (
+            <div style={{ display: 'inline-flex', gap: 4, alignItems: 'center', marginLeft: 4 }}>
+              <input
+                type="number"
+                className="input"
+                style={{ width: 65, fontSize: 11, padding: '2px 5px' }}
+                value={customW}
+                onChange={e => setCustomW(e.target.value)}
+                placeholder="W"
+                min="1"
+              />
+              <span style={{ fontSize: 11, color: 'var(--c-text-tertiary)' }}>×</span>
+              <input
+                type="number"
+                className="input"
+                style={{ width: 65, fontSize: 11, padding: '2px 5px' }}
+                value={customH}
+                onChange={e => setCustomH(e.target.value)}
+                placeholder="H"
+                min="1"
+              />
+              <button className="btn btn-secondary btn-sm" onClick={handleApplyCustom} style={{ fontSize: 11, padding: '2px 8px' }}>
+                Set
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Custom Input Bar if selected */}
-        {isCustom && (
-          <div className="card" style={{ padding: 'var(--sp-3)', display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
-            <span style={{ fontSize: 12, color: 'var(--c-text-secondary)' }}>Width:</span>
-            <input
-              type="number"
-              className="input"
-              style={{ width: 80, fontSize: 12, padding: '3px 6px' }}
-              value={customW}
-              onChange={e => setCustomW(e.target.value)}
-              min="1"
-            />
-            <span style={{ fontSize: 12, color: 'var(--c-text-secondary)' }}>Height:</span>
-            <input
-              type="number"
-              className="input"
-              style={{ width: 80, fontSize: 12, padding: '3px 6px' }}
-              value={customH}
-              onChange={e => setCustomH(e.target.value)}
-              min="1"
-            />
-            <button className="btn btn-secondary btn-sm" onClick={handleApplyCustom}>
-              Update
-            </button>
-          </div>
-        )}
-
-        {/* Main Inspection & Simulator View */}
+        {/* Main Inspection & Simulator View in Studio Split-View */}
         {!analysis || !hasFrame ? (
-          <div className="empty-state">
+          <div className="empty-state" style={{ flex: 1 }}>
             <div className="empty-state-title">Select a Frame</div>
             <div className="empty-state-body">
               Select a frame on the canvas to inspect its dimensions against {currentPreset.name} ({currentPreset.width}×{currentPreset.height}px).
             </div>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
-            {/* Viewport Metrics Card */}
-            <div className="card" style={{ padding: 'var(--sp-3) var(--sp-4)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text-primary)' }}>
-                  Viewport: {currentPreset.name} ({currentPreset.width} × {currentPreset.height}px)
-                </span>
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 600,
-                    padding: '2px 8px',
-                    borderRadius: 12,
-                    background:
-                      overflowDelta > 0 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
-                    color:
-                      overflowDelta > 0 ? 'var(--c-danger, #ef4444)' : 'var(--c-success, #10b981)',
-                  }}
-                >
-                  {overflowDelta > 0 ? `+${overflowDelta}px Overflow` : '✓ Fits Viewport'}
-                </span>
-              </div>
-
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                  gap: 'var(--sp-2)',
-                  fontSize: 11,
-                  color: 'var(--c-text-secondary)',
-                }}
-              >
-                <div>
-                  <span style={{ color: 'var(--c-text-tertiary)' }}>Design Bounds: </span>
-                  <strong>{analysis.frameWidth} × {analysis.frameHeight}px</strong>
-                </div>
-                <div>
-                  <span style={{ color: 'var(--c-text-tertiary)' }}>Preview Scale: </span>
-                  <strong>{Math.round(scale * 100)}%</strong>
-                </div>
-                <div>
-                  <span style={{ color: 'var(--c-text-tertiary)' }}>Audit Status: </span>
-                  <strong
+          <div className="tool-split-view" style={{ flex: 1, minHeight: 0 }}>
+            {/* Left Pane: Metrics and Issues List */}
+            <div style={{ width: 290, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', minHeight: 0 }}>
+              {/* Viewport Metrics Card */}
+              <div className="card" style={{ padding: 'var(--sp-2) var(--sp-3)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-primary)' }}>
+                    {currentPreset.name} ({currentPreset.width}×{currentPreset.height})
+                  </span>
+                  <span
                     style={{
+                      fontSize: 10,
+                      fontWeight: 600,
+                      padding: '1px 6px',
+                      borderRadius: 10,
+                      background:
+                        overflowDelta > 0 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
                       color:
-                        currentAudit?.status === 'FAIL'
-                          ? 'var(--c-danger, #ef4444)'
-                          : currentAudit?.status === 'WARNING'
-                          ? 'var(--c-warning, #f59e0b)'
-                          : 'var(--c-success, #10b981)',
+                        overflowDelta > 0 ? 'var(--c-danger, #ef4444)' : 'var(--c-success, #10b981)',
                     }}
                   >
-                    {currentAudit?.status || 'PASS'} ({currentAudit?.issues.length || 0} issues)
-                  </strong>
+                    {overflowDelta > 0 ? `+${overflowDelta}px Overflow` : '✓ Fits'}
+                  </span>
                 </div>
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '4px 8px',
+                    fontSize: 10,
+                    color: 'var(--c-text-secondary)',
+                  }}
+                >
+                  <div>
+                    <span style={{ color: 'var(--c-text-tertiary)' }}>Design: </span>
+                    <strong>{analysis.frameWidth}×{analysis.frameHeight}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--c-text-tertiary)' }}>Scale: </span>
+                    <strong>{Math.round(scale * 100)}%</strong>
+                  </div>
+                  <div style={{ gridColumn: 'span 2' }}>
+                    <span style={{ color: 'var(--c-text-tertiary)' }}>Status: </span>
+                    <strong
+                      style={{
+                        color:
+                          currentAudit?.status === 'FAIL'
+                            ? 'var(--c-danger, #ef4444)'
+                            : currentAudit?.status === 'WARNING'
+                            ? 'var(--c-warning, #f59e0b)'
+                            : 'var(--c-success, #10b981)',
+                      }}
+                    >
+                      {currentAudit?.status || 'PASS'} ({currentAudit?.issues.length || 0} issues)
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Issues Card with Internal Scroll */}
+              <div className="card" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                <div
+                  className="card-header"
+                  style={{
+                    padding: 'var(--sp-2) var(--sp-3)',
+                    borderBottom: '1px solid var(--c-border-subtle)',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <span>Issues at {currentPreset.name}</span>
+                  <span style={{ color: 'var(--c-text-tertiary)' }}>{currentAudit?.issues.length || 0}</span>
+                </div>
+
+                {(!currentAudit || currentAudit.issues.length === 0) ? (
+                  <div style={{ padding: 'var(--sp-4)', textAlign: 'center', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ fontSize: 11, color: 'var(--c-success, #10b981)' }}>✓ No issues detected</span>
+                  </div>
+                ) : (
+                  <div className="tool-scroll-list" style={{ flex: 1, padding: 0 }}>
+                    {currentAudit.issues.map((iss, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '6px 10px',
+                          borderBottom: '1px solid var(--c-border-subtle)',
+                          fontSize: 11,
+                          gap: 6,
+                        }}
+                      >
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontWeight: 600, color: 'var(--c-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {iss.nodeName}
+                          </div>
+                          <div style={{ fontSize: 10, color: 'var(--c-text-secondary)', lineHeight: 1.3 }}>
+                            {iss.message}
+                          </div>
+                        </div>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => handleFocus(iss.nodeId)}
+                          style={{ fontSize: 10, padding: '2px 6px', flexShrink: 0 }}
+                          title="Focus layer in Figma"
+                        >
+                          Focus
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Visual Viewport Simulation Frame */}
+            {/* Right Pane: Visual Viewport Simulation Frame */}
             <div
               className="card"
               style={{
+                flex: 1,
+                minHeight: 0,
                 display: 'flex',
-                flexDirection: 'column',
                 alignItems: 'center',
-                padding: 'var(--sp-4)',
+                justifyContent: 'center',
                 background: 'var(--c-bg-subtle, #12141a)',
                 overflow: 'hidden',
+                padding: 'var(--sp-3)',
               }}
             >
               <div
                 style={{
-                  width: Math.round(currentPreset.width * scale),
-                  minHeight: Math.min(300, previewHeight),
-                  maxHeight: 340,
+                  width: simWidth,
+                  height: simHeight,
                   border: '2px solid var(--c-accent)',
-                  borderRadius: Math.max(6, Math.round(16 * scale)),
+                  borderRadius: Math.max(6, Math.round(14 * scale)),
                   background: 'var(--c-surface)',
                   position: 'relative',
                   overflow: 'hidden',
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
                   display: 'flex',
                   flexDirection: 'column',
                 }}
@@ -258,35 +326,38 @@ export const BreakpointPreview: React.FC<Props> = ({ selection, onSuccess, onErr
                 {/* Simulated Screen Header */}
                 <div
                   style={{
-                    height: 20,
+                    height: 18,
                     background: 'var(--c-surface-raised, #252836)',
                     borderBottom: '1px solid var(--c-border-subtle)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    padding: '0 8px',
-                    fontSize: 9,
+                    padding: '0 6px',
+                    fontSize: 8,
                     color: 'var(--c-text-tertiary)',
                   }}
                 >
                   <span>{currentPreset.name} ({currentPreset.width}px)</span>
-                  <span>{Math.round(scale * 100)}% Scale</span>
+                  <span>{Math.round(scale * 100)}%</span>
                 </div>
 
                 {/* Simulated Content Representation */}
-                <div style={{ flex: 1, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ flex: 1, padding: 8, display: 'flex', flexDirection: 'column', gap: 6, overflow: 'hidden' }}>
                   <div
                     style={{
                       width: '100%',
-                      height: 24,
+                      height: 20,
                       background: 'var(--c-border-subtle)',
-                      borderRadius: 4,
+                      borderRadius: 3,
                       display: 'flex',
                       alignItems: 'center',
-                      padding: '0 8px',
-                      fontSize: 10,
+                      padding: '0 6px',
+                      fontSize: 9,
                       fontWeight: 600,
                       color: 'var(--c-text-secondary)',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
                     }}
                   >
                     {analysis.frameName}
@@ -295,52 +366,49 @@ export const BreakpointPreview: React.FC<Props> = ({ selection, onSuccess, onErr
                   {overflowDelta > 0 ? (
                     <div
                       style={{
-                        padding: 10,
-                        borderRadius: 6,
+                        padding: 6,
+                        borderRadius: 4,
                         background: 'rgba(239, 68, 68, 0.1)',
                         border: '1px dashed var(--c-danger, #ef4444)',
-                        fontSize: 11,
+                        fontSize: 9,
                         color: 'var(--c-danger, #ef4444)',
                         display: 'flex',
                         flexDirection: 'column',
-                        gap: 4,
+                        gap: 2,
                       }}
                     >
-                      <strong>Horizontal Overflow Detected</strong>
-                      <span>
-                        Design width ({analysis.frameWidth}px) exceeds this viewport by {overflowDelta}px.
-                      </span>
+                      <strong>Overflow Detected</strong>
+                      <span>Design is {overflowDelta}px wider than viewport.</span>
                     </div>
                   ) : (
                     <div
                       style={{
-                        padding: 10,
-                        borderRadius: 6,
+                        padding: 6,
+                        borderRadius: 4,
                         background: 'rgba(16, 185, 129, 0.08)',
                         border: '1px solid rgba(16, 185, 129, 0.3)',
-                        fontSize: 11,
+                        fontSize: 9,
                         color: 'var(--c-success, #10b981)',
                       }}
                     >
-                      ✓ Element bounds fit within {currentPreset.name} viewport.
+                      ✓ Bounds fit inside {currentPreset.name}.
                     </div>
                   )}
 
-                  {/* Issues overview inside preview */}
                   {currentAudit && currentAudit.issues.length > 0 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
-                      <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--c-text-tertiary)' }}>
-                        Identified Issues ({currentAudit.issues.length}):
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 2 }}>
+                      <span style={{ fontSize: 8, fontWeight: 600, color: 'var(--c-text-tertiary)' }}>
+                        Top Issues ({currentAudit.issues.length}):
                       </span>
-                      {currentAudit.issues.slice(0, 3).map((iss, i) => (
+                      {currentAudit.issues.slice(0, 2).map((iss, i) => (
                         <div
                           key={i}
                           style={{
-                            fontSize: 10,
+                            fontSize: 8,
                             color: 'var(--c-text-secondary)',
                             background: 'var(--c-bg)',
-                            padding: '4px 6px',
-                            borderRadius: 4,
+                            padding: '3px 5px',
+                            borderRadius: 3,
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
@@ -354,52 +422,6 @@ export const BreakpointPreview: React.FC<Props> = ({ selection, onSuccess, onErr
                 </div>
               </div>
             </div>
-
-            {/* List of issues for current preview viewport */}
-            {currentAudit && currentAudit.issues.length > 0 && (
-              <div className="card" style={{ overflow: 'hidden' }}>
-                <div
-                  className="card-header"
-                  style={{
-                    paddingBottom: 'var(--sp-2)',
-                    borderBottom: '1px solid var(--c-border-subtle)',
-                    fontSize: 12,
-                    fontWeight: 600,
-                  }}
-                >
-                  Issues at {currentPreset.name} ({currentPreset.width}px)
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 200, overflowY: 'auto' }}>
-                  {currentAudit.issues.map((iss, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: 'var(--sp-2) var(--sp-4)',
-                        borderBottom:
-                          i < currentAudit.issues.length - 1
-                            ? '1px solid var(--c-border-subtle)'
-                            : 'none',
-                        fontSize: 12,
-                      }}
-                    >
-                      <div>
-                        <strong>{iss.nodeName}</strong>: {iss.message}
-                      </div>
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => handleFocus(iss.nodeId)}
-                        style={{ fontSize: 11 }}
-                      >
-                        Focus
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         )}
       </div>

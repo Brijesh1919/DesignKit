@@ -104,185 +104,211 @@ export const AutoLayoutOptimizer: React.FC<Props> = ({
         </p>
       </div>
 
-      <div className="tool-body">
-        <SelectionBanner
-          selection={selection}
-          requiresSelection={true}
-          selectionHint="Select a single Frame with at least 2 child layers."
-        />
+      <div className="tool-split-view">
+        {/* Left Pane: Frame Status & Core Settings (~310px) */}
+        <div className="tool-pane-left">
+          <SelectionBanner
+            selection={selection}
+            requiresSelection={true}
+            selectionHint="Select a single Frame with at least 2 child layers."
+          />
 
-        {/* Analyze */}
-        <div className="card">
-          <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
-            {autoLayoutAnalysis ? (
-              <div style={{ padding: 'var(--sp-3)', background: 'var(--c-success-subtle)', borderRadius: 'var(--r-md)', border: '1px solid var(--c-success-border)' }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-success-text)', marginBottom: 4 }}>
-                  Analyzed: "{autoLayoutAnalysis.nodeName}"
+          {/* Analysis Card */}
+          <div className="card">
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+              {autoLayoutAnalysis ? (
+                <div style={{ padding: '6px 10px', background: 'var(--c-success-subtle)', borderRadius: 'var(--r-md)', border: '1px solid var(--c-success-border)' }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-success-text)' }}>
+                    "{autoLayoutAnalysis.nodeName}"
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--c-text-tertiary)', marginTop: 2 }}>
+                    {autoLayoutAnalysis.childCount} child layers · {autoLayoutAnalysis.currentHasAutoLayout ? 'Auto layout active' : 'No auto layout'}
+                  </div>
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)' }}>
-                  {autoLayoutAnalysis.childCount} children ·{' '}
-                  {autoLayoutAnalysis.currentHasAutoLayout ? 'Has auto layout' : 'No auto layout yet'}
+              ) : (
+                <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)', lineHeight: 1.4 }}>
+                  Select a Frame in Figma and click Analyze to detect optimal layout.
+                </div>
+              )}
+              <button
+                className={`btn btn-sm ${analysed ? 'btn-secondary' : 'btn-primary'}`}
+                onClick={handleAnalyze}
+                disabled={!hasFrame}
+                id="auto-layout-analyze-btn"
+                style={{ height: 30, fontSize: 11 }}
+              >
+                {analysed ? 'Re-analyze Frame' : 'Analyze Frame'}
+              </button>
+            </div>
+          </div>
+
+          {/* Layout Direction & Alignment */}
+          <div className="card">
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+              {/* Direction */}
+              <div className="field">
+                <label className="field-label">Layout Direction</label>
+                <div className="tabs" style={{ marginBottom: 0 }}>
+                  {(['VERTICAL', 'HORIZONTAL'] as const).map(d => (
+                    <button
+                      key={d}
+                      className={`tab-btn${direction === d ? ' active' : ''}`}
+                      onClick={() => setDirection(d)}
+                      id={`autolayout-dir-${d.toLowerCase()}`}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, height: 26, fontSize: 11 }}
+                    >
+                      <DirectionIcon dir={d} />
+                      {d.charAt(0) + d.slice(1).toLowerCase()}
+                    </button>
+                  ))}
                 </div>
               </div>
-            ) : (
-              <div style={{ fontSize: 13, color: 'var(--c-text-tertiary)', lineHeight: 1.6 }}>
-                Select a Frame in Figma and click Analyze to detect the optimal auto layout configuration.
+
+              {/* Counter-axis Alignment */}
+              <div className="field">
+                <label className="field-label">Counter-axis Alignment</label>
+                <div className="tabs" style={{ marginBottom: 0 }}>
+                  {(['MIN', 'CENTER', 'MAX'] as const).map(a => (
+                    <button
+                      key={a}
+                      className={`tab-btn${alignItems === a ? ' active' : ''}`}
+                      onClick={() => setAlignItems(a)}
+                      id={`autolayout-align-${a.toLowerCase()}`}
+                      style={{ height: 26, fontSize: 11 }}
+                    >
+                      {a === 'MIN' ? 'Start' : a === 'CENTER' ? 'Center' : 'End'}
+                    </button>
+                  ))}
+                </div>
               </div>
-            )}
-            <button
-              className={`btn ${analysed ? 'btn-secondary' : 'btn-primary'}`}
-              onClick={handleAnalyze}
-              disabled={!hasFrame}
-              id="auto-layout-analyze-btn"
-            >
-              {analysed ? 'Re-analyze' : 'Analyze Frame'}
-            </button>
+            </div>
           </div>
         </div>
 
-        {/* Configuration */}
-        <div className="card">
-          <div className="card-header">
-            <span className="card-title">Configuration</span>
-            {analysed && (
-              <span className="tag tag-accent" style={{ fontSize: 10 }}>Suggested</span>
-            )}
-          </div>
-          <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
-            {/* Direction */}
-            <div className="field">
-              <label className="field-label">Direction</label>
-              <div className="tabs">
-                {(['VERTICAL', 'HORIZONTAL'] as const).map(d => (
-                  <button
-                    key={d}
-                    className={`tab-btn${direction === d ? ' active' : ''}`}
-                    onClick={() => setDirection(d)}
-                    id={`autolayout-dir-${d.toLowerCase()}`}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-                  >
-                    <DirectionIcon dir={d} />
-                    {d.charAt(0) + d.slice(1).toLowerCase()}
-                  </button>
-                ))}
-              </div>
+        {/* Right Pane: Spacing, Padding & Live Preview Box (flex: 1) */}
+        <div className="tool-pane-right">
+          <div className="card">
+            <div className="card-header" style={{ padding: '8px 12px 0' }}>
+              <span className="card-title">Spacing & Insets</span>
+              {analysed && (
+                <span className="tag tag-accent" style={{ fontSize: 10 }}>Suggested</span>
+              )}
             </div>
 
-            {/* Gap */}
-            <div className="field">
-              <label className="field-label">Gap between children</label>
-              <div style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'center' }}>
-                <input
-                  type="range"
-                  className="slider"
-                  style={{ flex: 1 }}
-                  min={0}
-                  max={80}
-                  step={1}
-                  value={gap}
-                  onChange={e => setGap(parseInt(e.target.value))}
-                  id="autolayout-gap-slider"
-                />
-                <input
-                  className="num-input"
-                  type="number"
-                  min={0}
-                  max={200}
-                  value={gap}
-                  onChange={e => setGap(Math.max(0, parseInt(e.target.value) || 0))}
-                  style={{ width: 60 }}
-                />
-                <span style={{ fontSize: 12, color: 'var(--c-text-tertiary)' }}>px</span>
-              </div>
-            </div>
-
-            {/* Alignment */}
-            <div className="field">
-              <label className="field-label">Counter-axis Alignment</label>
-              <div className="tabs">
-                {(['MIN', 'CENTER', 'MAX'] as const).map(a => (
-                  <button
-                    key={a}
-                    className={`tab-btn${alignItems === a ? ' active' : ''}`}
-                    onClick={() => setAlignItems(a)}
-                    id={`autolayout-align-${a.toLowerCase()}`}
-                  >
-                    {a === 'MIN' ? 'Start' : a === 'CENTER' ? 'Center' : 'End'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Padding */}
-            <div className="field">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <label className="field-label">Padding</label>
-                <button
-                  className={`btn btn-ghost btn-sm`}
-                  onClick={() => setLinkPadding(!linkPadding)}
-                  style={{ fontSize: 11, color: linkPadding ? 'var(--c-accent)' : 'var(--c-text-tertiary)' }}
-                  id="autolayout-link-padding-btn"
-                >
-                  {linkPadding ? 'Linked' : 'Individual'}
-                </button>
-              </div>
-
-              {linkPadding ? (
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)', padding: '10px 12px' }}>
+              {/* Gap between children */}
+              <div className="field">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label className="field-label">Gap between children</label>
+                  <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{gap}px</span>
+                </div>
                 <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
+                  <input
+                    type="range"
+                    className="slider"
+                    style={{ flex: 1 }}
+                    min={0}
+                    max={80}
+                    step={1}
+                    value={gap}
+                    onChange={e => setGap(parseInt(e.target.value))}
+                    id="autolayout-gap-slider"
+                  />
                   <input
                     className="num-input"
                     type="number"
                     min={0}
-                    value={paddingTop}
-                    onChange={e => handlePaddingChange('top', parseInt(e.target.value) || 0)}
-                    style={{ width: 80 }}
+                    max={200}
+                    value={gap}
+                    onChange={e => setGap(Math.max(0, parseInt(e.target.value) || 0))}
+                    style={{ width: 52, height: 26, fontSize: 11 }}
                   />
-                  <span style={{ fontSize: 12, color: 'var(--c-text-tertiary)' }}>px all sides</span>
                 </div>
-              ) : (
-                <div className="two-col" style={{ gap: 'var(--sp-2)' }}>
-                  {[
-                    { key: 'top', label: 'Top',    val: paddingTop },
-                    { key: 'right', label: 'Right', val: paddingRight },
-                    { key: 'bottom', label: 'Bottom', val: paddingBottom },
-                    { key: 'left', label: 'Left',  val: paddingLeft },
-                  ].map(({ key, label, val }) => (
-                    <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                      <span style={{ fontSize: 10, color: 'var(--c-text-tertiary)' }}>{label}</span>
-                      <input
-                        className="num-input"
-                        type="number"
-                        min={0}
-                        value={val}
-                        onChange={e => handlePaddingChange(key, parseInt(e.target.value) || 0)}
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+              </div>
 
-            {/* Preview box */}
-            <div style={{ padding: 'var(--sp-3)', background: 'var(--c-bg)', borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)' }}>
-              <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)', marginBottom: 6 }}>Preview Configuration</div>
-              <div style={{ fontSize: 12, color: 'var(--c-text-secondary)', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                <div>Direction: <strong>{direction.charAt(0) + direction.slice(1).toLowerCase()}</strong></div>
-                <div>Gap: <strong>{gap}px</strong></div>
-                <div>Padding: <strong>{paddingTop === paddingRight && paddingRight === paddingBottom && paddingBottom === paddingLeft ? `${paddingTop}px` : `${paddingTop}px ${paddingRight}px ${paddingBottom}px ${paddingLeft}px`}</strong></div>
-                <div>Alignment: <strong>{alignItems === 'MIN' ? 'Start' : alignItems === 'CENTER' ? 'Center' : 'End'}</strong></div>
+              {/* Padding */}
+              <div className="field">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label className="field-label">Frame Padding</label>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => setLinkPadding(!linkPadding)}
+                    style={{ fontSize: 10, height: 20, padding: '0 4px', color: linkPadding ? 'var(--c-accent)' : 'var(--c-text-tertiary)' }}
+                    id="autolayout-link-padding-btn"
+                  >
+                    {linkPadding ? 'Linked All Sides' : 'Individual Sides'}
+                  </button>
+                </div>
+
+                {linkPadding ? (
+                  <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
+                    <input
+                      className="num-input"
+                      type="number"
+                      min={0}
+                      value={paddingTop}
+                      onChange={e => handlePaddingChange('top', parseInt(e.target.value) || 0)}
+                      style={{ width: 70, height: 26, fontSize: 11 }}
+                    />
+                    <span style={{ fontSize: 11, color: 'var(--c-text-tertiary)' }}>px uniform padding</span>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+                    {[
+                      { key: 'top', label: 'Top', val: paddingTop },
+                      { key: 'right', label: 'Right', val: paddingRight },
+                      { key: 'bottom', label: 'Bottom', val: paddingBottom },
+                      { key: 'left', label: 'Left', val: paddingLeft },
+                    ].map(({ key, label, val }) => (
+                      <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <span style={{ fontSize: 9, color: 'var(--c-text-tertiary)', textTransform: 'uppercase' }}>{label}</span>
+                        <input
+                          className="num-input"
+                          type="number"
+                          min={0}
+                          value={val}
+                          onChange={e => handlePaddingChange(key, parseInt(e.target.value) || 0)}
+                          style={{ height: 26, fontSize: 11 }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Preview Configuration Card */}
+              <div style={{ padding: '8px 10px', background: 'var(--c-bg)', borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--c-text-tertiary)', textTransform: 'uppercase', marginBottom: 4 }}>
+                  Configuration Summary
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--c-text-secondary)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                  <div>Direction: <strong>{direction.charAt(0) + direction.slice(1).toLowerCase()}</strong></div>
+                  <div>Gap: <strong>{gap}px</strong></div>
+                  <div>Padding: <strong>{paddingTop === paddingRight && paddingRight === paddingBottom && paddingBottom === paddingLeft ? `${paddingTop}px` : `${paddingTop} / ${paddingRight} / ${paddingBottom} / ${paddingLeft}`}</strong></div>
+                  <div>Alignment: <strong>{alignItems === 'MIN' ? 'Start' : alignItems === 'CENTER' ? 'Center' : 'End'}</strong></div>
+                </div>
               </div>
             </div>
-
-            <button
-              className="btn btn-primary btn-full"
-              onClick={handleApply}
-              disabled={!analysed}
-              id="auto-layout-apply-btn"
-            >
-              Apply Auto Layout
-            </button>
           </div>
         </div>
+      </div>
+
+      {/* Pinned Action Bar at Bottom */}
+      <div className="tool-footer">
+        <div style={{ fontSize: 11, color: 'var(--c-text-secondary)' }}>
+          {analysed && autoLayoutAnalysis
+            ? `Ready to apply on "${autoLayoutAnalysis.nodeName}" (${autoLayoutAnalysis.childCount} layers)`
+            : 'Select a Frame layer in Figma to optimize'}
+        </div>
+        <button
+          className="btn btn-primary"
+          onClick={handleApply}
+          disabled={!analysed}
+          id="auto-layout-apply-btn"
+          style={{ height: 32, padding: '0 var(--sp-5)', fontSize: 12, fontWeight: 600 }}
+        >
+          Apply Auto Layout
+        </button>
       </div>
     </div>
   )

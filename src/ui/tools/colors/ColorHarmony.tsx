@@ -116,110 +116,124 @@ export const ColorHarmony: React.FC<Props> = ({ selection, onSuccess, onError })
         </p>
       </div>
 
-      <div className="tool-body">
-        {/* Input */}
-        <div className="card">
-          <div className="card-body" style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'flex-end' }}>
-            <div className="field" style={{ flex: 1 }}>
-              <label className="field-label">Base Color</label>
-              <div className="color-field">
-                <div className="color-field-swatch" style={{ background: baseHex }}>
+      <div className="tool-split-view">
+        {/* Left Column: Base Color & Type Selector */}
+        <div className="tool-pane-left" style={{ width: 290 }}>
+          {/* Input */}
+          <div className="card">
+            <div className="card-header" style={{ padding: 'var(--sp-2) var(--sp-3) 0' }}>
+              <span className="card-title" style={{ fontSize: 12 }}>Base Color</span>
+            </div>
+            <div className="card-body" style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center', padding: 'var(--sp-3)' }}>
+              <div className="field" style={{ flex: 1, margin: 0 }}>
+                <div className="color-field">
+                  <div className="color-field-swatch" style={{ background: baseHex }}>
+                    <input
+                      type="color"
+                      value={baseHex}
+                      onChange={e => setInputValue(e.target.value)}
+                    />
+                  </div>
                   <input
-                    type="color"
-                    value={baseHex}
+                    className="color-field-input"
+                    type="text"
+                    value={inputValue}
                     onChange={e => setInputValue(e.target.value)}
+                    placeholder="#2563EB"
+                    spellCheck={false}
                   />
                 </div>
-                <input
-                  className="color-field-input"
-                  type="text"
-                  value={inputValue}
-                  onChange={e => setInputValue(e.target.value)}
-                  placeholder="#2563EB"
-                  spellCheck={false}
-                />
               </div>
+              <button className="btn btn-primary btn-sm" onClick={handleGenerate} id="harmony-generate-btn" style={{ height: 32 }}>
+                Generate
+              </button>
             </div>
-            <button className="btn btn-primary" onClick={handleGenerate} id="harmony-generate-btn">
-              Generate
-            </button>
+          </div>
+
+          {/* Harmony type selector */}
+          <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <div className="card-header" style={{ padding: 'var(--sp-2) var(--sp-3) 0' }}>
+              <span className="card-title" style={{ fontSize: 12 }}>Harmony Relationships</span>
+            </div>
+            <div className="tool-scroll-list" style={{ padding: 'var(--sp-2)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {HARMONY_DEFS.map(def => {
+                const currentHarmonies = harmonies || generateHarmonies(baseHex)
+                const colors = currentHarmonies ? currentHarmonies[def.key] : []
+                const isActive = activeKey === def.key
+                return (
+                  <button
+                    key={def.key}
+                    onClick={() => {
+                      if (!harmonies && currentHarmonies) setHarmonies(currentHarmonies)
+                      setActiveKey(def.key)
+                    }}
+                    id={`harmony-type-${def.key}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '6px 8px',
+                      borderRadius: 'var(--r-md)',
+                      border: `1px solid ${isActive ? 'var(--c-accent)' : 'var(--c-border)'}`,
+                      background: isActive ? 'var(--c-accent-subtle)' : 'var(--c-surface)',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      transition: 'all 120ms ease',
+                    }}
+                  >
+                    {/* Color strip */}
+                    <div style={{ display: 'flex', gap: 2, height: 16, width: 68, flexShrink: 0 }}>
+                      {colors.map((hex, i) => (
+                        <div
+                          key={i}
+                          style={{
+                            flex: 1,
+                            background: hex,
+                            borderRadius: 2,
+                            border: '1px solid rgba(0,0,0,0.06)',
+                          }}
+                        />
+                      ))}
+                    </div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: isActive ? 'var(--c-accent)' : 'var(--c-text-primary)' }}>
+                        {def.label}
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
           </div>
         </div>
 
-        {/* Harmony type selector */}
-        {harmonies && (
-          <>
-            <div className="card">
-              <div className="card-header">
-                <span className="card-title">Harmony Type</span>
-              </div>
-              <div className="card-body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-2)' }}>
-                {HARMONY_DEFS.map(def => {
-                  const colors = harmonies[def.key]
-                  const isActive = activeKey === def.key
-                  return (
-                    <button
-                      key={def.key}
-                      onClick={() => setActiveKey(def.key)}
-                      id={`harmony-type-${def.key}`}
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 6,
-                        padding: 'var(--sp-3)',
-                        borderRadius: 'var(--r-lg)',
-                        border: `1px solid ${isActive ? 'var(--c-accent-border)' : 'var(--c-border)'}`,
-                        background: isActive ? 'var(--c-accent-subtle)' : 'var(--c-surface)',
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        transition: 'all 150ms ease',
-                      }}
-                    >
-                      {/* Color strip */}
-                      <div style={{ display: 'flex', gap: 3, height: 16 }}>
-                        {colors.map((hex, i) => (
-                          <div
-                            key={i}
-                            style={{
-                              flex: 1,
-                              background: hex,
-                              borderRadius: 3,
-                              border: '1px solid rgba(0,0,0,0.06)',
-                            }}
-                          />
-                        ))}
-                      </div>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: isActive ? 'var(--c-accent)' : 'var(--c-text-primary)' }}>
-                        {def.label}
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)', lineHeight: 1.4 }}>
-                        {def.desc}
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
+        {/* Right Column: Active Harmony Detail & Swatches */}
+        <div className="tool-pane-right">
+          {(() => {
+            const currentHarmonies = harmonies || generateHarmonies(baseHex)
+            const activeColors = currentHarmonies ? currentHarmonies[activeKey] : []
+            const activeDef = HARMONY_DEFS.find(d => d.key === activeKey)
 
-            {/* Active harmony detail */}
-            {activeHarmony && (
-              <div className="card">
-                <div className="card-header">
-                  <span className="card-title">
-                    {HARMONY_DEFS.find(d => d.key === activeKey)?.label}
-                  </span>
+            return (
+              <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <div className="card-header" style={{ padding: 'var(--sp-3) var(--sp-4)', borderBottom: '1px solid var(--c-border-subtle)' }}>
+                  <div>
+                    <span className="card-title">{activeDef?.label}</span>
+                    <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)', marginTop: 2 }}>{activeDef?.desc}</div>
+                  </div>
                   <div className="btn-row">
                     <button
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => handleCreateStyles(activeHarmony)}
+                      className="btn btn-primary btn-sm"
+                      onClick={() => handleCreateStyles(activeColors)}
                       id="harmony-create-styles-btn"
                     >
-                      Create Styles
+                      Create Styles ({activeColors.length})
                     </button>
                   </div>
                 </div>
-                <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
-                  {activeHarmony.map((hex, i) => (
+
+                <div className="tool-scroll-list" style={{ padding: 'var(--sp-3) var(--sp-4)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+                  {activeColors.map((hex, i) => (
                     <div key={i} style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
                       <div style={{ flex: 1 }}>
                         <MiniSwatch
@@ -230,7 +244,7 @@ export const ColorHarmony: React.FC<Props> = ({ selection, onSuccess, onError })
                         />
                       </div>
                       <button
-                        className="btn btn-ghost btn-sm"
+                        className="btn btn-secondary btn-sm"
                         onClick={() => handleApplyToSelection(hex)}
                         style={{ flexShrink: 0, fontSize: 11 }}
                       >
@@ -240,9 +254,9 @@ export const ColorHarmony: React.FC<Props> = ({ selection, onSuccess, onError })
                   ))}
                 </div>
               </div>
-            )}
-          </>
-        )}
+            )
+          })()}
+        </div>
       </div>
     </div>
   )

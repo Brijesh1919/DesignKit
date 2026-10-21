@@ -382,10 +382,10 @@ export const ColorPalette: React.FC<Props> = ({ selection, onSuccess, onError })
         </p>
       </div>
 
-      <div className="tool-body">
+      {/* Pinned Global Action Bar */}
+      <div style={{ padding: 'var(--sp-2) var(--sp-5)', background: 'var(--c-surface)', borderBottom: '1px solid var(--c-border)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', flexShrink: 0 }}>
         <SelectionBanner selection={selection} />
 
-        {/* Global actions */}
         <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
           <button
             className="btn btn-primary"
@@ -402,9 +402,20 @@ export const ColorPalette: React.FC<Props> = ({ selection, onSuccess, onError })
           >
             Create All Styles
           </button>
+          <button
+            className="btn btn-secondary"
+            onClick={addEntry}
+            id="color-palette-add-color-btn"
+            disabled={entries.length >= 8}
+            title="Add Another Color (max 8)"
+          >
+            <PlusIcon /> Add Color {entries.length >= 8 ? '(max 8)' : ''}
+          </button>
         </div>
+      </div>
 
-        {/* Palette entries */}
+      {/* Scrollable Palette Entries */}
+      <div className="tool-scroll-list" style={{ padding: 'var(--sp-3) var(--sp-5)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
         {entries.map((entry, index) => (
           <PaletteRow
             key={entry.id}
@@ -418,17 +429,6 @@ export const ColorPalette: React.FC<Props> = ({ selection, onSuccess, onError })
             onError={onError}
           />
         ))}
-
-        {/* Add color button */}
-        <button
-          className="btn btn-secondary btn-full"
-          onClick={addEntry}
-          id="color-palette-add-color-btn"
-          style={{ borderStyle: 'dashed', borderWidth: 1.5 }}
-          disabled={entries.length >= 8}
-        >
-          <PlusIcon /> Add Another Color {entries.length >= 8 ? '(max 8)' : ''}
-        </button>
       </div>
     </div>
   )

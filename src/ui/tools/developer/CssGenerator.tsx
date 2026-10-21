@@ -64,7 +64,7 @@ export const CssGenerator: React.FC<Props> = ({ selection, onSuccess, onError })
         </p>
       </div>
 
-      <div className="tool-body">
+      <div className="tool-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', overflow: 'hidden' }}>
         <SelectionBanner
           selection={selection}
           requiresSelection
@@ -72,57 +72,63 @@ export const CssGenerator: React.FC<Props> = ({ selection, onSuccess, onError })
         />
 
         {selection && selection.count > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
-              <button
-                className={`btn btn-sm ${mode === 'rules' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setMode('rules')}
-              >
-                CSS Rules
-              </button>
-              <button
-                className={`btn btn-sm ${mode === 'variables' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setMode('variables')}
-              >
-                CSS Variables
-              </button>
-            </div>
+          <div className="card" style={{ padding: 'var(--sp-2) var(--sp-3)', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--sp-2)' }}>
+              <div style={{ display: 'inline-flex', background: 'var(--c-bg)', padding: 2, borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)' }}>
+                <button
+                  className={`btn btn-sm ${mode === 'rules' ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => setMode('rules')}
+                  style={{ height: 26, fontSize: 11, padding: '0 var(--sp-3)' }}
+                >
+                  CSS Rules
+                </button>
+                <button
+                  className={`btn btn-sm ${mode === 'variables' ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => setMode('variables')}
+                  style={{ height: 26, fontSize: 11, padding: '0 var(--sp-3)' }}
+                >
+                  CSS Variables
+                </button>
+              </div>
 
-            {data && (
-              <span className="tag" style={{ fontSize: 11 }}>
-                {data.propertiesCount} properties generated
-              </span>
-            )}
+              {data && (
+                <span className="tag" style={{ fontSize: 10 }}>
+                  {data.propertiesCount} properties generated
+                </span>
+              )}
+            </div>
           </div>
         )}
 
         {loading ? (
-          <div className="empty-state">
+          <div className="empty-state" style={{ flex: 1 }}>
             <div style={{ fontSize: 13, color: 'var(--c-text-tertiary)' }}>Generating CSS…</div>
           </div>
         ) : !selection || selection.count === 0 ? (
-          <div className="empty-state">
+          <div className="empty-state" style={{ flex: 1 }}>
             <div className="empty-state-title">No layer selected</div>
             <div className="empty-state-body">
               Select any frame, component, shape, or text layer on canvas to inspect and copy CSS.
             </div>
           </div>
         ) : data ? (
-          <div className="card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div
               className="card-header"
               style={{
-                paddingBottom: 'var(--sp-3)',
+                padding: 'var(--sp-2) var(--sp-3)',
                 borderBottom: '1px solid var(--c-border-subtle)',
+                flexShrink: 0,
               }}
             >
-              <div className="card-title">
+              <div className="card-title" style={{ fontSize: 12 }}>
                 {mode === 'rules' ? `CSS — .${data.nodeName}` : 'CSS Variables — :root'}
               </div>
               <button
-                className="btn btn-secondary btn-sm"
+                className="btn btn-primary btn-sm"
                 onClick={handleCopy}
                 id="copy-css-btn"
+                style={{ height: 28, fontSize: 11 }}
               >
                 {copied ? (
                   <>
@@ -146,13 +152,14 @@ export const CssGenerator: React.FC<Props> = ({ selection, onSuccess, onError })
             <pre
               style={{
                 margin: 0,
-                padding: 'var(--sp-4)',
+                padding: 'var(--sp-3)',
                 background: 'var(--c-surface-subtle)',
                 fontFamily: 'var(--font-mono)',
                 fontSize: 12,
                 lineHeight: 1.6,
                 color: 'var(--c-text-primary)',
-                overflowX: 'auto',
+                flex: 1,
+                overflow: 'auto',
                 userSelect: 'all',
               }}
             >

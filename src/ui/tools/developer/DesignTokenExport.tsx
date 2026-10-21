@@ -77,90 +77,97 @@ export const DesignTokenExport: React.FC<Props> = ({ selection, onSuccess, onErr
         </p>
       </div>
 
-      <div className="tool-body">
+      <div className="tool-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', overflow: 'hidden' }}>
         <SelectionBanner
           selection={selection}
           selectionHint="Select layers to extract tokens, or switch to Current Page."
         />
 
         {/* Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
+        <div className="card" style={{ padding: 'var(--sp-2) var(--sp-3)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--sp-2)' }}>
+            <div style={{ display: 'inline-flex', background: 'var(--c-bg)', padding: 2, borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)' }}>
+              <button
+                className={`btn btn-sm ${scope === 'selection' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => {
+                  setScope('selection')
+                  requestTokens('selection')
+                }}
+                style={{ height: 26, fontSize: 11, padding: '0 var(--sp-2)' }}
+              >
+                Selected Layers
+              </button>
+              <button
+                className={`btn btn-sm ${scope === 'page' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => {
+                  setScope('page')
+                  requestTokens('page')
+                }}
+                style={{ height: 26, fontSize: 11, padding: '0 var(--sp-2)' }}
+              >
+                Current Page
+              </button>
+            </div>
+
             <button
-              className={`btn btn-sm ${scope === 'selection' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => {
-                setScope('selection')
-                requestTokens('selection')
-              }}
+              className="btn btn-secondary btn-sm"
+              onClick={() => requestTokens(scope)}
+              disabled={loading}
+              style={{ height: 26, fontSize: 11 }}
             >
-              Selected Layers
-            </button>
-            <button
-              className={`btn btn-sm ${scope === 'page' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => {
-                setScope('page')
-                requestTokens('page')
-              }}
-            >
-              Current Page
+              {loading ? 'Extracting…' : 'Re-extract'}
             </button>
           </div>
-
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={() => requestTokens(scope)}
-            disabled={loading}
-          >
-            {loading ? 'Extracting…' : 'Re-extract'}
-          </button>
         </div>
 
         {/* Token Counts */}
         {data && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 'var(--sp-2)' }}>
-            <div className="card" style={{ padding: 'var(--sp-2) var(--sp-3)', textAlign: 'center' }}>
-              <div style={{ fontSize: 10, color: 'var(--c-text-tertiary)', textTransform: 'uppercase' }}>Colors</div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-accent)' }}>{data.counts.colors}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 'var(--sp-2)', flexShrink: 0 }}>
+            <div className="card" style={{ padding: 'var(--sp-1) var(--sp-2)', textAlign: 'center' }}>
+              <div style={{ fontSize: 9, color: 'var(--c-text-tertiary)', textTransform: 'uppercase' }}>Colors</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-primary)' }}>{data.counts.colors}</div>
             </div>
-            <div className="card" style={{ padding: 'var(--sp-2) var(--sp-3)', textAlign: 'center' }}>
-              <div style={{ fontSize: 10, color: 'var(--c-text-tertiary)', textTransform: 'uppercase' }}>Type</div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-primary)' }}>{data.counts.typography}</div>
+            <div className="card" style={{ padding: 'var(--sp-1) var(--sp-2)', textAlign: 'center' }}>
+              <div style={{ fontSize: 9, color: 'var(--c-text-tertiary)', textTransform: 'uppercase' }}>Type</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-text-primary)' }}>{data.counts.typography}</div>
             </div>
-            <div className="card" style={{ padding: 'var(--sp-2) var(--sp-3)', textAlign: 'center' }}>
-              <div style={{ fontSize: 10, color: 'var(--c-text-tertiary)', textTransform: 'uppercase' }}>Spacing</div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-primary)' }}>{data.counts.spacing}</div>
+            <div className="card" style={{ padding: 'var(--sp-1) var(--sp-2)', textAlign: 'center' }}>
+              <div style={{ fontSize: 9, color: 'var(--c-text-tertiary)', textTransform: 'uppercase' }}>Spacing</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-text-primary)' }}>{data.counts.spacing}</div>
             </div>
-            <div className="card" style={{ padding: 'var(--sp-2) var(--sp-3)', textAlign: 'center' }}>
-              <div style={{ fontSize: 10, color: 'var(--c-text-tertiary)', textTransform: 'uppercase' }}>Radius</div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-primary)' }}>{data.counts.radius}</div>
+            <div className="card" style={{ padding: 'var(--sp-1) var(--sp-2)', textAlign: 'center' }}>
+              <div style={{ fontSize: 9, color: 'var(--c-text-tertiary)', textTransform: 'uppercase' }}>Radius</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-text-primary)' }}>{data.counts.radius}</div>
             </div>
-            <div className="card" style={{ padding: 'var(--sp-2) var(--sp-3)', textAlign: 'center' }}>
-              <div style={{ fontSize: 10, color: 'var(--c-text-tertiary)', textTransform: 'uppercase' }}>Shadows</div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-primary)' }}>{data.counts.shadows}</div>
+            <div className="card" style={{ padding: 'var(--sp-1) var(--sp-2)', textAlign: 'center' }}>
+              <div style={{ fontSize: 9, color: 'var(--c-text-tertiary)', textTransform: 'uppercase' }}>Shadows</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-text-primary)' }}>{data.counts.shadows}</div>
             </div>
           </div>
         )}
 
         {/* JSON Preview */}
         {loading ? (
-          <div className="empty-state">
+          <div className="empty-state" style={{ flex: 1 }}>
             <div style={{ fontSize: 13, color: 'var(--c-text-tertiary)' }}>Extracting design tokens…</div>
           </div>
         ) : data ? (
-          <div className="card" style={{ overflow: 'hidden' }}>
+          <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div
               className="card-header"
               style={{
-                paddingBottom: 'var(--sp-3)',
+                padding: 'var(--sp-2) var(--sp-3)',
                 borderBottom: '1px solid var(--c-border-subtle)',
+                flexShrink: 0,
               }}
             >
-              <div className="card-title">Tokens JSON</div>
+              <div className="card-title" style={{ fontSize: 12 }}>Tokens JSON</div>
               <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
                 <button
                   className="btn btn-secondary btn-sm"
                   onClick={handleCopy}
                   id="copy-tokens-json-btn"
+                  style={{ height: 26, fontSize: 11 }}
                 >
                   {copied ? 'Copied!' : 'Copy JSON'}
                 </button>
@@ -168,6 +175,7 @@ export const DesignTokenExport: React.FC<Props> = ({ selection, onSuccess, onErr
                   className="btn btn-primary btn-sm"
                   onClick={handleDownload}
                   id="download-tokens-json-btn"
+                  style={{ height: 26, fontSize: 11 }}
                 >
                   Download .json
                 </button>
@@ -177,13 +185,13 @@ export const DesignTokenExport: React.FC<Props> = ({ selection, onSuccess, onErr
             <pre
               style={{
                 margin: 0,
-                padding: 'var(--sp-4)',
+                padding: 'var(--sp-3)',
                 background: 'var(--c-surface-subtle)',
                 fontFamily: 'var(--font-mono)',
                 fontSize: 12,
                 lineHeight: 1.6,
                 color: 'var(--c-text-primary)',
-                maxHeight: 320,
+                flex: 1,
                 overflow: 'auto',
                 userSelect: 'all',
               }}

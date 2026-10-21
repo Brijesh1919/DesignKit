@@ -372,77 +372,52 @@ export const TextQA: React.FC<Props> = ({ selection, onSuccess, onError }) => {
         </p>
       </div>
 
-      {/* Body */}
-      <div className="tool-body">
-        <SelectionBanner
-          selection={selection}
-          selectionHint="Select a text layer or frame to check its content."
-          requiresSelection
-        />
-
-        {/* Scan Actions & Selection Bar */}
-        <div
-          className="card"
-          style={{
-            padding: 'var(--sp-4)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: 'var(--sp-3)',
-          }}
-        >
-          <div>
-            <div
-              style={{
-                fontSize: 'var(--fs-xs)',
-                fontWeight: 600,
-                color: 'var(--c-text-tertiary)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px',
-              }}
-            >
-              Target Object
-            </div>
-            <div
-              style={{
-                fontSize: 'var(--fs-md)',
-                fontWeight: 600,
-                color: hasSelection ? 'var(--c-text-primary)' : 'var(--c-text-disabled)',
-                marginTop: 2,
-              }}
-            >
+      {/* Pinned Toolbar & Actions */}
+      <div style={{ padding: '8px var(--sp-5)', background: 'var(--c-surface)', borderBottom: '1px solid var(--c-border)', display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0, zIndex: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--sp-2)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-text-tertiary)', textTransform: 'uppercase' }}>
+              Target:
+            </span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: hasSelection ? 'var(--c-text-primary)' : 'var(--c-text-disabled)' }}>
               {hasSelection ? (scannedRootName || activeSelectionName) : 'No selection'}
-            </div>
+            </span>
+            {hasSelection && textNodeCount !== null && (
+              <span style={{ fontSize: 11, color: 'var(--c-text-tertiary)', background: 'var(--c-bg)', padding: '1px 6px', borderRadius: 4, border: '1px solid var(--c-border)' }}>
+                {textNodeCount} text layers
+              </span>
+            )}
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
             <button
-              className="btn btn-primary"
+              className="btn btn-primary btn-sm"
               onClick={handleScan}
               disabled={!hasSelection || scanning}
               id="text-qa-scan-btn"
+              style={{ height: 28, fontSize: 12 }}
             >
               <ScanIcon />
-              {scanning ? 'Scanning…' : hasScanned ? 'Re-scan Selection' : 'Scan Selection'}
+              {scanning ? 'Scanning…' : hasScanned ? 'Re-scan' : 'Scan Selection'}
             </button>
 
             {hasScanned && (
               <button
-                className={`btn ${reviewMode ? 'btn-primary' : 'btn-secondary'}`}
+                className={`btn btn-sm ${reviewMode ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={toggleReviewMode}
                 title="Toggle visual highlights over layers with issues"
                 id="text-qa-review-mode-btn"
+                style={{ height: 28, fontSize: 11 }}
               >
                 <EyeIcon />
-                Review Mode {reviewMode ? 'ON' : 'OFF'}
+                Review {reviewMode ? 'ON' : 'OFF'}
               </button>
             )}
 
             {counts.safeCount > 0 && (
               <button
-                className="btn btn-secondary"
-                style={{ borderColor: 'var(--c-accent-border)', color: 'var(--c-accent)' }}
+                className="btn btn-sm btn-primary"
+                style={{ background: '#059669', borderColor: '#059669', height: 28, fontSize: 12, fontWeight: 600 }}
                 onClick={handleFixSafeIssues}
                 title="Automatically fix obvious duplicate spaces and punctuation"
                 id="text-qa-fix-safe-btn"
@@ -454,6 +429,48 @@ export const TextQA: React.FC<Props> = ({ selection, onSuccess, onError }) => {
           </div>
         </div>
 
+        {/* Filter Pills Bar (when issues exist) */}
+        {hasSelection && !scanning && hasScanned && counts.total > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', paddingTop: 2 }}>
+            {(
+              [
+                { id: 'ALL', label: 'All', count: counts.total, color: 'var(--c-accent)' },
+                { id: 'SPELLING', label: 'Spelling', count: counts.spelling, color: '#EF4444' },
+                { id: 'GRAMMAR', label: 'Grammar', count: counts.grammar, color: '#8B5CF6' },
+                { id: 'SPACING', label: 'Spacing', count: counts.spacing, color: '#F59E0B' },
+                { id: 'PUNCTUATION', label: 'Punctuation', count: counts.punctuation, color: '#EA580C' },
+                { id: 'TYPOGRAPHY', label: 'Typography', count: counts.typography, color: '#2563EB' },
+              ] as { id: IssueFilter; label: string; count: number; color: string }[]
+            ).map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setFilter(tab.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  padding: '3px 9px',
+                  borderRadius: 'var(--r-full)',
+                  border: `1px solid ${filter === tab.id ? tab.color : 'var(--c-border)'}`,
+                  background: filter === tab.id ? 'var(--c-accent-subtle)' : 'var(--c-bg)',
+                  color: filter === tab.id ? 'var(--c-text-primary)' : 'var(--c-text-secondary)',
+                  fontSize: 11,
+                  fontWeight: filter === tab.id ? 600 : 500,
+                  cursor: 'pointer',
+                  transition: 'all 120ms ease',
+                }}
+              >
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: tab.color }} />
+                <span>{tab.label}</span>
+                <span style={{ fontSize: 10, opacity: 0.75, fontFamily: 'var(--font-mono)' }}>({tab.count})</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Scrollable Issue List Container */}
+      <div style={{ flex: 1, minHeight: 0, padding: 'var(--sp-3) var(--sp-5)', overflowY: 'auto' }}>
         {/* Empty State: No selection */}
         {!hasSelection && (
           <div className="empty-state">
@@ -531,160 +548,6 @@ export const TextQA: React.FC<Props> = ({ selection, onSuccess, onError }) => {
         {/* Scan Results View */}
         {hasSelection && !scanning && hasScanned && counts.total > 0 && (
           <>
-            {/* Stat Pill Grid */}
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))',
-                gap: 'var(--sp-2)',
-              }}
-            >
-              {/* Total Card */}
-              <div
-                className="card"
-                style={{
-                  padding: 'var(--sp-3)',
-                  cursor: 'pointer',
-                  border: filter === 'ALL' ? '1.5px solid var(--c-accent)' : '1px solid var(--c-border)',
-                  background: filter === 'ALL' ? 'var(--c-accent-subtle)' : 'var(--c-surface)',
-                  transition: 'border-color 150ms ease, background 150ms ease',
-                }}
-                onClick={() => setFilter('ALL')}
-              >
-                <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)', fontWeight: 600 }}>Total Issues</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-text-primary)', marginTop: 2 }}>
-                  {counts.total}
-                </div>
-              </div>
-
-              {/* Spelling Card */}
-              <div
-                className="card"
-                style={{
-                  padding: 'var(--sp-3)',
-                  cursor: 'pointer',
-                  border: filter === 'SPELLING' ? '1.5px solid #EF4444' : '1px solid var(--c-border)',
-                  background: filter === 'SPELLING' ? '#FEF2F2' : 'var(--c-surface)',
-                  transition: 'border-color 150ms ease, background 150ms ease',
-                }}
-                onClick={() => setFilter('SPELLING')}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#EF4444' }} />
-                  <span style={{ fontSize: 11, color: '#DC2626', fontWeight: 600 }}>Spelling</span>
-                </div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-text-primary)', marginTop: 2 }}>
-                  {counts.spelling}
-                </div>
-              </div>
-
-              {/* Grammar Card */}
-              <div
-                className="card"
-                style={{
-                  padding: 'var(--sp-3)',
-                  cursor: 'pointer',
-                  border: filter === 'GRAMMAR' ? '1.5px solid #8B5CF6' : '1px solid var(--c-border)',
-                  background: filter === 'GRAMMAR' ? '#F5F3FF' : 'var(--c-surface)',
-                  transition: 'border-color 150ms ease, background 150ms ease',
-                }}
-                onClick={() => setFilter('GRAMMAR')}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#8B5CF6' }} />
-                  <span style={{ fontSize: 11, color: '#7C3AED', fontWeight: 600 }}>Grammar</span>
-                </div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-text-primary)', marginTop: 2 }}>
-                  {counts.grammar}
-                </div>
-              </div>
-
-              {/* Spacing Card */}
-              <div
-                className="card"
-                style={{
-                  padding: 'var(--sp-3)',
-                  cursor: 'pointer',
-                  border: filter === 'SPACING' ? '1.5px solid #F59E0B' : '1px solid var(--c-border)',
-                  background: filter === 'SPACING' ? '#FFFBEB' : 'var(--c-surface)',
-                  transition: 'border-color 150ms ease, background 150ms ease',
-                }}
-                onClick={() => setFilter('SPACING')}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#F59E0B' }} />
-                  <span style={{ fontSize: 11, color: '#D97706', fontWeight: 600 }}>Spacing</span>
-                </div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-text-primary)', marginTop: 2 }}>
-                  {counts.spacing}
-                </div>
-              </div>
-
-              {/* Punctuation Card */}
-              <div
-                className="card"
-                style={{
-                  padding: 'var(--sp-3)',
-                  cursor: 'pointer',
-                  border: filter === 'PUNCTUATION' ? '1.5px solid #EA580C' : '1px solid var(--c-border)',
-                  background: filter === 'PUNCTUATION' ? '#FFF7ED' : 'var(--c-surface)',
-                  transition: 'border-color 150ms ease, background 150ms ease',
-                }}
-                onClick={() => setFilter('PUNCTUATION')}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#EA580C' }} />
-                  <span style={{ fontSize: 11, color: '#C2410C', fontWeight: 600 }}>Punctuation</span>
-                </div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-text-primary)', marginTop: 2 }}>
-                  {counts.punctuation}
-                </div>
-              </div>
-
-              {/* Typography Card */}
-              <div
-                className="card"
-                style={{
-                  padding: 'var(--sp-3)',
-                  cursor: 'pointer',
-                  border: filter === 'TYPOGRAPHY' ? '1.5px solid #2563EB' : '1px solid var(--c-border)',
-                  background: filter === 'TYPOGRAPHY' ? '#EFF6FF' : 'var(--c-surface)',
-                  transition: 'border-color 150ms ease, background 150ms ease',
-                }}
-                onClick={() => setFilter('TYPOGRAPHY')}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#2563EB' }} />
-                  <span style={{ fontSize: 11, color: '#1D4ED8', fontWeight: 600 }}>Typography</span>
-                </div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-text-primary)', marginTop: 2 }}>
-                  {counts.typography}
-                </div>
-              </div>
-            </div>
-
-            {/* Filter Tabs */}
-            <div className="tabs">
-              {(
-                [
-                  { id: 'ALL', label: `All (${counts.total})` },
-                  { id: 'SPELLING', label: `Spelling (${counts.spelling})` },
-                  { id: 'GRAMMAR', label: `Grammar (${counts.grammar})` },
-                  { id: 'SPACING', label: `Spacing (${counts.spacing})` },
-                  { id: 'PUNCTUATION', label: `Punctuation (${counts.punctuation})` },
-                  { id: 'TYPOGRAPHY', label: `Typography (${counts.typography})` },
-                ] as { id: IssueFilter; label: string }[]
-              ).map(tab => (
-                <button
-                  key={tab.id}
-                  className={`tab-btn${filter === tab.id ? ' active' : ''}`}
-                  onClick={() => setFilter(tab.id)}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
             {/* Issue List */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
               {filteredIssues.length === 0 ? (

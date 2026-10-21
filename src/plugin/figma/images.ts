@@ -124,8 +124,18 @@ export function applyImageCrop(
 
   let count = 0
   for (const node of selection) {
-    // 1. If it has image fills, set the scaleMode ('FILL' or 'FIT')
-    if ('fills' in node && Array.isArray((node as GeometryMixin).fills)) {
+    // 1. If croppedBytes provided, apply the cropped image directly to fills
+    if (payload.croppedBytes && payload.croppedBytes.length > 0 && 'fills' in node) {
+      const image = figma.createImage(new Uint8Array(payload.croppedBytes))
+      const fill: ImagePaint = {
+        type: 'IMAGE',
+        scaleMode: 'FILL',
+        imageHash: image.hash,
+        opacity: 1,
+        visible: true,
+      }
+      ;(node as GeometryMixin).fills = [fill]
+    } else if ('fills' in node && Array.isArray((node as GeometryMixin).fills)) {
       const fills = (node as GeometryMixin).fills as ReadonlyArray<Paint>
       const newFills = fills.map(f => {
         if (f.type === 'IMAGE') {

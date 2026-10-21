@@ -90,51 +90,77 @@ export const LayerNaming: React.FC<Props> = ({ selection, onSuccess, onError }) 
         </p>
       </div>
 
-      <div className="tool-body">
+      <div className="tool-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', overflow: 'hidden' }}>
         <SelectionBanner
           selection={selection}
           selectionHint="Select layers to clean generic names, or switch to Current Page."
         />
 
         {/* Controls bar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
+        <div className="card" style={{ padding: 'var(--sp-2) var(--sp-3)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
+              <div style={{ display: 'inline-flex', background: 'var(--c-bg)', padding: 2, borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)' }}>
+                <button
+                  className={`btn btn-sm ${scope === 'selection' ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => {
+                    setScope('selection')
+                    requestAnalysis('selection')
+                  }}
+                  style={{ height: 26, fontSize: 11, padding: '0 var(--sp-2)' }}
+                >
+                  Selected Layers
+                </button>
+                <button
+                  className={`btn btn-sm ${scope === 'page' ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => {
+                    setScope('page')
+                    requestAnalysis('page')
+                  }}
+                  style={{ height: 26, fontSize: 11, padding: '0 var(--sp-2)' }}
+                >
+                  Current Page
+                </button>
+              </div>
+
+              {items.length > 0 && (
+                <div style={{ display: 'flex', gap: 4, marginLeft: 'var(--sp-2)' }}>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => toggleAll(true)}
+                    style={{ fontSize: 11, height: 26, padding: '0 6px' }}
+                  >
+                    Select All
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => toggleAll(false)}
+                    style={{ fontSize: 11, height: 26, padding: '0 6px' }}
+                  >
+                    Deselect All
+                  </button>
+                </div>
+              )}
+            </div>
+
             <button
-              className={`btn btn-sm ${scope === 'selection' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => {
-                setScope('selection')
-                requestAnalysis('selection')
-              }}
+              className="btn btn-secondary btn-sm"
+              onClick={() => requestAnalysis(scope)}
+              disabled={loading}
+              style={{ height: 26, fontSize: 11 }}
             >
-              Selected Layers
-            </button>
-            <button
-              className={`btn btn-sm ${scope === 'page' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => {
-                setScope('page')
-                requestAnalysis('page')
-              }}
-            >
-              Current Page
+              {loading ? 'Scanning…' : 'Re-scan'}
             </button>
           </div>
-
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={() => requestAnalysis(scope)}
-            disabled={loading}
-          >
-            {loading ? 'Scanning…' : 'Re-scan'}
-          </button>
         </div>
 
         {/* Status / Results */}
         {loading ? (
-          <div className="empty-state">
+          <div className="empty-state" style={{ flex: 1 }}>
             <div style={{ fontSize: 13, color: 'var(--c-text-tertiary)' }}>Scanning layers…</div>
           </div>
         ) : items.length === 0 && analyzed ? (
-          <div className="empty-state">
+          <div className="empty-state" style={{ flex: 1 }}>
             <div className="empty-state-title">All layers cleanly named!</div>
             <div className="empty-state-body">
               {totalChecked > 0
@@ -143,46 +169,30 @@ export const LayerNaming: React.FC<Props> = ({ selection, onSuccess, onError }) 
             </div>
           </div>
         ) : items.length > 0 ? (
-          <div className="card" style={{ overflow: 'hidden' }}>
+          <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div
               className="card-header"
               style={{
-                paddingBottom: 'var(--sp-3)',
+                padding: 'var(--sp-2) var(--sp-3)',
                 borderBottom: '1px solid var(--c-border-subtle)',
+                flexShrink: 0,
               }}
             >
-              <div className="card-title">
+              <div className="card-title" style={{ fontSize: 12 }}>
                 {items.length} Generic Layer{items.length !== 1 ? 's' : ''} Found ({totalChecked} checked)
-              </div>
-              <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => toggleAll(true)}
-                  style={{ fontSize: 11 }}
-                >
-                  Select All
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => toggleAll(false)}
-                  style={{ fontSize: 11 }}
-                >
-                  Deselect All
-                </button>
               </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 380, overflowY: 'auto' }}>
+            <div className="tool-scroll-list" style={{ flex: 1, padding: 0 }}>
               {items.map((item, idx) => (
                 <div
                   key={item.nodeId}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 'var(--sp-3)',
-                    padding: 'var(--sp-2) var(--sp-4)',
-                    borderBottom:
-                      idx < items.length - 1 ? '1px solid var(--c-border-subtle)' : 'none',
+                    gap: 'var(--sp-2)',
+                    padding: 'var(--sp-2) var(--sp-3)',
+                    borderBottom: '1px solid var(--c-border-subtle)',
                     background: item.checked ? 'var(--c-surface)' : 'var(--c-bg)',
                   }}
                 >
@@ -190,13 +200,13 @@ export const LayerNaming: React.FC<Props> = ({ selection, onSuccess, onError }) 
                     type="checkbox"
                     checked={item.checked}
                     onChange={() => toggleItem(item.nodeId)}
-                    style={{ cursor: 'pointer', accentColor: 'var(--c-accent)' }}
+                    style={{ cursor: 'pointer', accentColor: 'var(--c-primary)' }}
                   />
 
-                  <div style={{ width: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ width: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     <span
                       style={{
-                        fontSize: 12,
+                        fontSize: 11,
                         color: 'var(--c-text-tertiary)',
                         cursor: 'pointer',
                         textDecoration: 'line-through',
@@ -208,12 +218,12 @@ export const LayerNaming: React.FC<Props> = ({ selection, onSuccess, onError }) 
                     </span>
                   </div>
 
-                  <span style={{ fontSize: 12, color: 'var(--c-text-tertiary)' }}>→</span>
+                  <span style={{ fontSize: 11, color: 'var(--c-text-tertiary)' }}>→</span>
 
                   <div style={{ flex: 1 }}>
                     <input
                       className="input"
-                      style={{ height: 28, fontSize: 12 }}
+                      style={{ height: 26, fontSize: 11 }}
                       type="text"
                       value={item.suggestedName}
                       onChange={e => updateSuggestedName(item.nodeId, e.target.value)}
@@ -221,21 +231,19 @@ export const LayerNaming: React.FC<Props> = ({ selection, onSuccess, onError }) 
                     />
                   </div>
 
-                  <span className="tag" style={{ fontSize: 10 }}>
+                  <span className="tag" style={{ fontSize: 9, padding: '1px 6px' }}>
                     {item.nodeType}
                   </span>
                 </div>
               ))}
             </div>
 
+            {/* Pinned Action Footer */}
             <div
+              className="tool-footer"
               style={{
-                padding: 'var(--sp-3) var(--sp-4)',
-                background: 'var(--c-surface-subtle)',
-                borderTop: '1px solid var(--c-border-subtle)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
+                padding: 'var(--sp-2) var(--sp-4)',
+                flexShrink: 0,
               }}
             >
               <span style={{ fontSize: 12, color: 'var(--c-text-secondary)' }}>
@@ -246,6 +254,7 @@ export const LayerNaming: React.FC<Props> = ({ selection, onSuccess, onError }) 
                 onClick={handleApply}
                 disabled={selectedCount === 0}
                 id="apply-layer-renames-btn"
+                style={{ height: 30 }}
               >
                 Rename Layers ({selectedCount})
               </button>

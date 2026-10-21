@@ -600,195 +600,177 @@ export const FontReplacer: React.FC<Props> = ({ selection, onSuccess, onError })
         </p>
       </div>
 
-      <div className="main-scroll" style={{ paddingBottom: 100 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)', maxWidth: 720 }}>
-          {/* Controls Bar */}
-          <div className="card">
-            <div className="card-body" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--sp-3)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
-                <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 'var(--fw-medium)', color: 'var(--c-text-secondary)' }}>
-                  Scan Scope:
-                </span>
-                <div style={{ display: 'inline-flex', background: 'var(--c-bg)', padding: 2, borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)' }}>
-                  <button
-                    className={`btn btn-sm ${scope === 'selection' ? 'btn-primary' : 'btn-ghost'}`}
-                    onClick={() => setScope('selection')}
-                    style={{ height: 26, padding: '0 var(--sp-3)' }}
-                  >
-                    Selection {selection && selection.count > 0 ? `(${selection.count})` : ''}
-                  </button>
-                  <button
-                    className={`btn btn-sm ${scope === 'page' ? 'btn-primary' : 'btn-ghost'}`}
-                    onClick={() => setScope('page')}
-                    style={{ height: 26, padding: '0 var(--sp-3)' }}
-                  >
-                    Entire Page
-                  </button>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={handleScan}
-                  disabled={loading}
-                >
-                  {loading ? 'Scanning…' : 'Re-scan'}
-                </button>
-                {totalFontsCount > 0 && (
-                  <button
-                    className={`btn btn-sm ${showGlobalReplace ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setShowGlobalReplace(!showGlobalReplace)}
-                  >
-                    {showGlobalReplace ? 'Close Bulk Re-skin' : '⚡ Bulk Re-skin'}
-                  </button>
-                )}
-              </div>
+      {/* Pinned Toolbar & Compact Stats */}
+      <div style={{ padding: '8px var(--sp-5)', background: 'var(--c-surface)', borderBottom: '1px solid var(--c-border)', display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0, zIndex: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--sp-2)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+            <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 'var(--fw-semibold)', color: 'var(--c-text-secondary)' }}>
+              Scan Scope:
+            </span>
+            <div style={{ display: 'inline-flex', background: 'var(--c-bg)', padding: 2, borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)' }}>
+              <button
+                className={`btn btn-sm ${scope === 'selection' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setScope('selection')}
+                style={{ height: 24, padding: '0 10px', fontSize: 11 }}
+              >
+                Selection {selection && selection.count > 0 ? `(${selection.count})` : ''}
+              </button>
+              <button
+                className={`btn btn-sm ${scope === 'page' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setScope('page')}
+                style={{ height: 24, padding: '0 10px', fontSize: 11 }}
+              >
+                Entire Page
+              </button>
             </div>
           </div>
 
-          {/* Bulk Re-skin Card */}
-          {showGlobalReplace && (
-            <div className="card" style={{ border: '1px solid var(--c-accent)', background: 'rgba(37, 99, 235, 0.03)', overflow: 'visible' }}>
-              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span className="card-title">Bulk Rebrand: Replace ALL Fonts in {scope === 'selection' ? 'Selection' : 'Page'}</span>
-                <span style={{ fontSize: 11, color: 'var(--c-accent)', fontWeight: 600 }}>Visual Batch Switcher</span>
-              </div>
-              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)', overflow: 'visible' }}>
-                <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--c-text-secondary)' }}>
-                  Preview and swap all {data?.totalTextNodes} text layers across {data?.uniqueFamiliesCount} font families to your chosen replacement font.
-                </span>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) 140px auto', gap: 'var(--sp-2)', alignItems: 'center' }}>
-                  {/* Visual Font Picker with Custom Toggle */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-                    {globalCustomMode ? (
-                      <input
-                        className="input"
-                        style={{ height: 32, fontSize: 12, flex: 1 }}
-                        value={globalTargetFamily}
-                        onChange={e => {
-                          setGlobalTargetFamily(e.target.value)
-                          ensureWebFont(e.target.value)
-                        }}
-                        placeholder="Type font family (e.g. Poppins)"
-                      />
-                    ) : (
-                      <VisualFontPicker
-                        value={globalTargetFamily}
-                        onChange={fn => {
-                          setGlobalTargetFamily(fn)
-                          ensureWebFont(fn)
-                        }}
-                        availableFamilies={availableFamilies}
-                        isOpen={activePickerKey === 'GLOBAL'}
-                        onToggle={() => setActivePickerKey(activePickerKey === 'GLOBAL' ? null : 'GLOBAL')}
-                        onClose={() => setActivePickerKey(null)}
-                      />
-                    )}
-
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      style={{ padding: '0 6px', height: 32, fontSize: 11 }}
-                      onClick={() => setGlobalCustomMode(!globalCustomMode)}
-                      title={globalCustomMode ? 'Choose from visual font gallery' : 'Type custom font name'}
-                    >
-                      {globalCustomMode ? '📋 List' : '✏️ Type'}
-                    </button>
-                  </div>
-
-                  {/* Weight Selector */}
-                  <select
-                    className="select"
-                    style={{ height: 32, fontSize: 12 }}
-                    value={globalTargetStyle}
-                    onChange={e => setGlobalTargetStyle(e.target.value)}
-                  >
-                    <option value="PRESERVE">✨ Preserve Weights</option>
-                    {getStylesForFamily(globalTargetFamily).map(w => (
-                      <option key={`bulk-w-${w}`} value={w}>{w}</option>
-                    ))}
-                  </select>
-
-                  <button
-                    className="btn btn-primary"
-                    style={{ height: 32, minWidth: 100 }}
-                    onClick={handleReplaceAll}
-                    disabled={replacingKey === 'ALL'}
-                  >
-                    {replacingKey === 'ALL' ? 'Updating…' : 'Replace All'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Summary Stats */}
+          {/* Compact Stats Pill Bar */}
           {data && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--sp-3)' }}>
-              <div className="card" style={{ padding: 'var(--sp-3)' }}>
-                <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)' }}>Total Text Layers</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-text-primary)', marginTop: 2 }}>
-                  {data.totalTextNodes}
-                </div>
-              </div>
-
-              <div className="card" style={{ padding: 'var(--sp-3)' }}>
-                <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)' }}>Font Families</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-text-primary)', marginTop: 2 }}>
-                  {data.uniqueFamiliesCount}
-                </div>
-              </div>
-
-              <div className="card" style={{ padding: 'var(--sp-3)' }}>
-                <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)' }}>Font Styles / Weights</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-text-primary)', marginTop: 2 }}>
-                  {data.fonts.length}
-                </div>
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 11, background: 'var(--c-bg)', border: '1px solid var(--c-border)', padding: '2px 8px', borderRadius: 'var(--r-full)', color: 'var(--c-text-secondary)' }}>
+                <strong>{data.totalTextNodes}</strong> Text Layers
+              </span>
+              <span style={{ fontSize: 11, background: 'var(--c-bg)', border: '1px solid var(--c-border)', padding: '2px 8px', borderRadius: 'var(--r-full)', color: 'var(--c-text-secondary)' }}>
+                <strong>{data.uniqueFamiliesCount}</strong> Families
+              </span>
+              <span style={{ fontSize: 11, background: 'var(--c-bg)', border: '1px solid var(--c-border)', padding: '2px 8px', borderRadius: 'var(--r-full)', color: 'var(--c-text-secondary)' }}>
+                <strong>{data.fonts.length}</strong> Font Groups
+              </span>
             </div>
           )}
 
-          {/* Results List */}
-          {loading ? (
-            <div className="empty-state">
-              <div style={{ fontSize: 13, color: 'var(--c-text-tertiary)' }}>Scanning text layers for typography fonts…</div>
-            </div>
-          ) : totalFontsCount === 0 ? (
-            <div className="empty-state">
-              <div className="empty-state-title">No Text Layers Found</div>
-              <div className="empty-state-body">
-                {scope === 'selection'
-                  ? 'Select a frame, group, or text layer on the canvas to detect its fonts.'
-                  : 'No text layers found on the active page.'}
-              </div>
-            </div>
-          ) : (
-            <div className="card" style={{ overflow: 'visible' }}>
-              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--sp-2)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
-                  <span className="card-title">
-                    {totalFontsCount} Detected Font Group{totalFontsCount !== 1 ? 's' : ''}
-                  </span>
-                  <span style={{ fontSize: 11, color: 'var(--c-text-tertiary)', background: 'var(--c-bg)', padding: '2px 8px', borderRadius: 4, border: '1px solid var(--c-border)' }}>
-                    Visual Typography Preview Enabled
-                  </span>
-                </div>
+          <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={handleScan}
+              disabled={loading}
+              style={{ height: 26, fontSize: 11 }}
+            >
+              {loading ? 'Scanning…' : 'Re-scan'}
+            </button>
+            {totalFontsCount > 0 && (
+              <button
+                className={`btn btn-sm ${showGlobalReplace ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setShowGlobalReplace(!showGlobalReplace)}
+                style={{ height: 26, fontSize: 11 }}
+              >
+                {showGlobalReplace ? 'Close Bulk Re-skin' : '⚡ Bulk Re-skin'}
+              </button>
+            )}
+          </div>
+        </div>
 
-                {totalFontsCount > 3 && (
+        {/* Bulk Re-skin Pinned Strip */}
+        {showGlobalReplace && (
+          <div style={{ padding: '8px 12px', background: 'var(--c-accent-subtle)', border: '1px solid var(--c-accent-border)', borderRadius: 'var(--r-md)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-accent)' }}>Bulk Replace All:</span>
+              <span style={{ fontSize: 11, color: 'var(--c-text-secondary)' }}>Swap all {data?.totalTextNodes} layers across {scope === 'selection' ? 'selection' : 'page'}</span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, width: 220 }}>
+                {globalCustomMode ? (
                   <input
                     className="input"
-                    style={{ width: 150, height: 26, fontSize: 11 }}
-                    placeholder="Filter detected layers…"
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    title="Filter detected text layers by name or text"
+                    style={{ height: 28, fontSize: 11, flex: 1 }}
+                    value={globalTargetFamily}
+                    onChange={e => {
+                      setGlobalTargetFamily(e.target.value)
+                      ensureWebFont(e.target.value)
+                    }}
+                    placeholder="Type font (e.g. Poppins)"
+                  />
+                ) : (
+                  <VisualFontPicker
+                    value={globalTargetFamily}
+                    onChange={fn => {
+                      setGlobalTargetFamily(fn)
+                      ensureWebFont(fn)
+                    }}
+                    availableFamilies={availableFamilies}
+                    isOpen={activePickerKey === 'GLOBAL'}
+                    onToggle={() => setActivePickerKey(activePickerKey === 'GLOBAL' ? null : 'GLOBAL')}
+                    onClose={() => setActivePickerKey(null)}
                   />
                 )}
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ padding: '0 6px', height: 28, fontSize: 10 }}
+                  onClick={() => setGlobalCustomMode(!globalCustomMode)}
+                  title={globalCustomMode ? 'Choose from visual gallery' : 'Type custom font'}
+                >
+                  {globalCustomMode ? 'List' : 'Type'}
+                </button>
               </div>
 
-              <div className="card-body" style={{ padding: 0, overflow: 'visible' }}>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <select
+                className="select"
+                style={{ height: 28, fontSize: 11, width: 130 }}
+                value={globalTargetStyle}
+                onChange={e => setGlobalTargetStyle(e.target.value)}
+              >
+                <option value="PRESERVE">✨ Preserve Weights</option>
+                {getStylesForFamily(globalTargetFamily).map(w => (
+                  <option key={`bulk-w-${w}`} value={w}>{w}</option>
+                ))}
+              </select>
+
+              <button
+                className="btn btn-primary btn-sm"
+                style={{ height: 28, minWidth: 90, fontSize: 11 }}
+                onClick={handleReplaceAll}
+                disabled={replacingKey === 'ALL'}
+              >
+                {replacingKey === 'ALL' ? 'Updating…' : 'Replace All'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Dedicated Scroll Container for Results List */}
+      <div style={{ flex: 1, minHeight: 0, padding: 'var(--sp-3) var(--sp-5)', overflowY: 'auto' }}>
+        {loading ? (
+          <div className="empty-state">
+            <div style={{ fontSize: 13, color: 'var(--c-text-tertiary)' }}>Scanning text layers for typography fonts…</div>
+          </div>
+        ) : totalFontsCount === 0 ? (
+          <div className="empty-state">
+            <div className="empty-state-title">No Text Layers Found</div>
+            <div className="empty-state-body">
+              {scope === 'selection'
+                ? 'Select a frame, group, or text layer on the canvas to detect its fonts.'
+                : 'No text layers found on the active page.'}
+            </div>
+          </div>
+        ) : (
+          <div className="card" style={{ overflow: 'visible' }}>
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--sp-2)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+                <span className="card-title">
+                  {totalFontsCount} Detected Font Group{totalFontsCount !== 1 ? 's' : ''}
+                </span>
+                <span style={{ fontSize: 10, color: 'var(--c-text-tertiary)', background: 'var(--c-bg)', padding: '2px 6px', borderRadius: 4, border: '1px solid var(--c-border)' }}>
+                  Visual Typography Preview Enabled
+                </span>
+              </div>
+
+              {totalFontsCount > 3 && (
+                <input
+                  className="input"
+                  style={{ width: 160, height: 26, fontSize: 11 }}
+                  placeholder="Filter detected layers…"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  title="Filter detected text layers by name or text"
+                />
+              )}
+            </div>
+
+            <div className="card-body" style={{ padding: 0, overflow: 'visible' }}>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
                   {filteredDetectedFonts.map(item => {
                     const key = `${item.family}:::${item.style}`
                     const target = targets[key] || { family: item.family, style: item.style }
@@ -946,7 +928,6 @@ export const FontReplacer: React.FC<Props> = ({ selection, onSuccess, onError })
               </div>
             </div>
           )}
-        </div>
       </div>
     </div>
   )

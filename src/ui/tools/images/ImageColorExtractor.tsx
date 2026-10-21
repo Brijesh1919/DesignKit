@@ -109,27 +109,33 @@ export const ImageColorExtractor: React.FC<Props> = ({
         </p>
       </div>
 
-      <div className="tool-body">
+      <div className="tool-body" style={{ flex: 1, overflow: 'hidden', padding: 0 }}>
         {/* Hidden canvas for pixel processing */}
         <canvas ref={canvasRef} style={{ display: 'none' }} />
 
-        <SelectionBanner
-          selection={selection}
-          requiresSelection={true}
-          selectionHint="Select an image layer (or any layer with an image fill) in Figma."
-        />
+        <div className="tool-split-view" style={{ height: '100%' }}>
+          {/* Left Pane: Selection & Extraction Settings & Pinned CTAs */}
+          <div className="tool-pane-left" style={{ width: 310, display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+            <SelectionBanner
+              selection={selection}
+              requiresSelection={true}
+              selectionHint="Select an image or frame with image fill in Figma."
+            />
 
-        {/* Controls */}
-        <div className="card">
-          <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
-            <div className="two-col">
-              <div className="field">
-                <label className="field-label">Number of Colors</label>
-                <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
+            <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+              <div className="card-header">
+                <span className="card-title">Extractor Settings</span>
+              </div>
+              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)', flex: 1 }}>
+                <div className="field">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--sp-1)' }}>
+                    <label className="field-label" style={{ margin: 0 }}>Number of Colors</label>
+                    <span style={{ fontSize: 'var(--fs-xs)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{colorCount}</span>
+                  </div>
                   <input
                     type="range"
                     className="slider"
-                    style={{ flex: 1 }}
+                    style={{ width: '100%' }}
                     min={2}
                     max={12}
                     step={1}
@@ -137,94 +143,125 @@ export const ImageColorExtractor: React.FC<Props> = ({
                     onChange={e => setColorCount(parseInt(e.target.value))}
                     id="image-color-count-slider"
                   />
-                  <span className="slider-value">{colorCount}</span>
+                </div>
+
+                <div className="field">
+                  <label className="field-label">Style Group Name</label>
+                  <input
+                    className="input"
+                    type="text"
+                    value={groupName}
+                    onChange={e => setGroupName(e.target.value)}
+                    placeholder="Image"
+                  />
+                </div>
+
+                {/* Pinned Action Buttons */}
+                <div style={{ marginTop: 'auto', paddingTop: 'var(--sp-3)', borderTop: '1px solid var(--c-border-subtle)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={handleExtract}
+                    disabled={extracting || !selection || selection.count === 0}
+                    id="image-extract-btn"
+                    style={{ width: '100%', height: 36 }}
+                  >
+                    {extracting ? 'Extracting…' : 'Extract Dominant Colors'}
+                  </button>
+
+                  {colors.length > 0 && (
+                    <button
+                      className="btn btn-secondary"
+                      onClick={handleCreateStyles}
+                      id="image-create-styles-btn"
+                      style={{ width: '100%', height: 34 }}
+                    >
+                      Create Figma Color Styles ({colors.length})
+                    </button>
+                  )}
                 </div>
               </div>
+            </div>
+          </div>
 
-              <div className="field">
-                <label className="field-label">Style Group Name</label>
-                <input
-                  className="input"
-                  type="text"
-                  value={groupName}
-                  onChange={e => setGroupName(e.target.value)}
-                  placeholder="Image"
-                />
+          {/* Right Pane: Extracted Palette List */}
+          <div className="tool-pane-right" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span className="card-title">
+                  {colors.length > 0 ? `Extracted Palette (${colors.length})` : 'Color Swatches'}
+                </span>
+                {colors.length > 0 && (
+                  <span style={{ fontSize: 11, color: 'var(--c-text-tertiary)' }}>
+                    Click swatch to copy hex
+                  </span>
+                )}
+              </div>
+
+              <div className="card-body tool-scroll-list" style={{ flex: 1, padding: 'var(--sp-2)' }}>
+                {colors.length === 0 ? (
+                  <div style={{ padding: 'var(--sp-8)', textAlign: 'center', color: 'var(--c-text-tertiary)', fontSize: 'var(--fs-sm)' }}>
+                    Select an image layer and click "Extract Dominant Colors" to generate palette swatches.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+                    {colors.map((hex, i) => {
+                      const useWhite = shouldUseWhiteText(hex)
+                      return (
+                        <div
+                          key={i}
+                          style={{
+                            display: 'flex',
+                            gap: 'var(--sp-3)',
+                            alignItems: 'center',
+                            padding: 'var(--sp-2) var(--sp-3)',
+                            background: 'var(--c-surface)',
+                            border: '1px solid var(--c-border-subtle)',
+                            borderRadius: 'var(--r-md)',
+                          }}
+                        >
+                          {/* Large swatch */}
+                          <div
+                            style={{
+                              width: 48,
+                              height: 34,
+                              background: hex,
+                              borderRadius: 'var(--r-sm)',
+                              border: '1px solid rgba(0,0,0,0.1)',
+                              flexShrink: 0,
+                              cursor: 'pointer',
+                            }}
+                            onClick={() => handleCopy(hex)}
+                            title={`Click to copy ${hex}`}
+                          />
+
+                          {/* Info */}
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 13, fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--c-text-primary)' }}>
+                              {hex.toUpperCase()}
+                            </div>
+                            <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)' }}>
+                              {groupName}/{i + 1}
+                            </div>
+                          </div>
+
+                          {/* Actions */}
+                          <div style={{ display: 'flex', gap: 'var(--sp-1)' }}>
+                            <button className="btn btn-ghost btn-sm" onClick={() => handleCopy(hex)} style={{ height: 26, padding: '0 8px', fontSize: 11 }}>
+                              Copy
+                            </button>
+                            <button className="btn btn-secondary btn-sm" onClick={() => handleApply(hex)} style={{ height: 26, padding: '0 8px', fontSize: 11 }}>
+                              Apply
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             </div>
-
-            <button
-              className={`btn btn-primary ${extracting ? '' : ''}`}
-              onClick={handleExtract}
-              disabled={extracting || !selection || selection.count === 0}
-              id="image-extract-btn"
-            >
-              {extracting ? 'Extracting…' : 'Extract Colors'}
-            </button>
           </div>
         </div>
-
-        {/* Results */}
-        {colors.length > 0 && (
-          <div className="card">
-            <div className="card-header">
-              <span className="card-title">Dominant Colors</span>
-              <button className="btn btn-secondary btn-sm" onClick={handleCreateStyles} id="image-create-styles-btn">
-                Create Styles
-              </button>
-            </div>
-            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
-              {colors.map((hex, i) => {
-                const useWhite = shouldUseWhiteText(hex)
-                return (
-                  <div
-                    key={i}
-                    style={{
-                      display: 'flex',
-                      gap: 'var(--sp-3)',
-                      alignItems: 'center',
-                    }}
-                  >
-                    {/* Large swatch */}
-                    <div
-                      style={{
-                        width: 52,
-                        height: 36,
-                        background: hex,
-                        borderRadius: 'var(--r-md)',
-                        border: '1px solid rgba(0,0,0,0.06)',
-                        flexShrink: 0,
-                        cursor: 'pointer',
-                      }}
-                      onClick={() => handleCopy(hex)}
-                      title={`Click to copy ${hex}`}
-                    />
-
-                    {/* Info */}
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontFamily: 'var(--font-mono)', fontWeight: 500, color: 'var(--c-text-primary)' }}>
-                        {hex.toUpperCase()}
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)' }}>
-                        Color {i + 1}
-                      </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="btn-row">
-                      <button className="btn btn-ghost btn-sm" onClick={() => handleCopy(hex)}>
-                        Copy
-                      </button>
-                      <button className="btn btn-ghost btn-sm" onClick={() => handleApply(hex)}>
-                        Apply
-                      </button>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )

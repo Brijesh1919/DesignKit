@@ -95,157 +95,153 @@ export const ExtractColors: React.FC<Props> = ({ selection, onSuccess, onError }
         </p>
       </div>
 
-      <div className="main-scroll">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)', maxWidth: 680 }}>
-          {/* Controls Bar */}
-          <div className="card">
-            <div className="card-body" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--sp-3)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
-                <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 'var(--fw-medium)', color: 'var(--c-text-secondary)' }}>
-                  Scope:
-                </span>
-                <div style={{ display: 'inline-flex', background: 'var(--c-bg)', padding: 2, borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)' }}>
-                  <button
-                    className={`btn btn-sm ${scope === 'selection' ? 'btn-primary' : 'btn-ghost'}`}
-                    onClick={() => setScope('selection')}
-                    style={{ height: 26, padding: '0 var(--sp-3)' }}
-                  >
-                    Selection {selection && selection.count > 0 ? `(${selection.count})` : ''}
-                  </button>
-                  <button
-                    className={`btn btn-sm ${scope === 'page' ? 'btn-primary' : 'btn-ghost'}`}
-                    onClick={() => setScope('page')}
-                    style={{ height: 26, padding: '0 var(--sp-3)' }}
-                  >
-                    Entire Page
-                  </button>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
-                <button className="btn btn-secondary btn-sm" onClick={handleScan} disabled={isLoading}>
-                  {isLoading ? 'Scanning...' : 'Re-scan'}
-                </button>
-                {colors.length > 0 && (
-                  <button className="btn btn-primary btn-sm" onClick={handleCreateStyles}>
-                    Create Color Styles ({colors.length})
-                  </button>
-                )}
-              </div>
-            </div>
+      {/* Pinned Controls Bar */}
+      <div style={{ padding: 'var(--sp-2) var(--sp-5)', background: 'var(--c-surface)', borderBottom: '1px solid var(--c-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--sp-2)', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+          <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 'var(--fw-medium)', color: 'var(--c-text-secondary)' }}>
+            Scope:
+          </span>
+          <div style={{ display: 'inline-flex', background: 'var(--c-bg)', padding: 2, borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)' }}>
+            <button
+              className={`btn btn-sm ${scope === 'selection' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setScope('selection')}
+              style={{ height: 26, padding: '0 var(--sp-3)', fontSize: 11 }}
+            >
+              Selection {selection && selection.count > 0 ? `(${selection.count})` : ''}
+            </button>
+            <button
+              className={`btn btn-sm ${scope === 'page' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setScope('page')}
+              style={{ height: 26, padding: '0 var(--sp-3)', fontSize: 11 }}
+            >
+              Entire Page
+            </button>
           </div>
+        </div>
 
-          {/* Results Section */}
-          {hasScanned && (
-            <div className="card">
-              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span className="card-title">
-                  Found {colors.length} Unique Color{colors.length !== 1 ? 's' : ''} across {totalLayers} layer{totalLayers !== 1 ? 's' : ''}
-                </span>
-                {colors.length > 5 && (
-                  <input
-                    className="input"
-                    style={{ width: 140, height: 28, fontSize: 'var(--fs-xs)' }}
-                    placeholder="Filter hex..."
-                    value={filterQuery}
-                    onChange={e => setFilterQuery(e.target.value)}
-                  />
-                )}
-              </div>
-
-              <div className="card-body" style={{ padding: 0 }}>
-                {filtered.length === 0 ? (
-                  <div style={{ padding: 'var(--sp-6)', textAlign: 'center', color: 'var(--c-text-secondary)', fontSize: 'var(--fs-sm)' }}>
-                    {colors.length === 0
-                      ? 'No solid fill or stroke colors found in the scanned layers.'
-                      : 'No colors matching your filter.'}
-                  </div>
-                ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 'var(--sp-3)', padding: 'var(--sp-4)' }}>
-                    {filtered.map(item => {
-                      const useWhite = shouldUseWhiteText(item.hex)
-                      return (
-                        <div
-                          key={item.hex}
-                          style={{
-                            background: 'var(--c-surface)',
-                            border: '1px solid var(--c-border)',
-                            borderRadius: 'var(--r-lg)',
-                            padding: 'var(--sp-3)',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: 'var(--sp-2)',
-                            boxShadow: 'var(--shadow-xs)',
-                          }}
-                        >
-                          <div
-                            style={{
-                              width: '100%',
-                              height: 52,
-                              borderRadius: 'var(--r-md)',
-                              background: item.hex,
-                              border: '1px solid rgba(0,0,0,0.08)',
-                              display: 'flex',
-                              alignItems: 'flex-end',
-                              justifyContent: 'space-between',
-                              padding: 'var(--sp-2)',
-                            }}
-                          >
-                            <span
-                              style={{
-                                fontSize: 10,
-                                fontWeight: 700,
-                                color: useWhite ? '#ffffff' : '#000000',
-                                background: useWhite ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.4)',
-                                padding: '2px 6px',
-                                borderRadius: 'var(--r-sm)',
-                              }}
-                            >
-                              {item.count}×
-                            </span>
-                            <span
-                              style={{
-                                fontSize: 9,
-                                color: useWhite ? '#ffffff' : '#000000',
-                                opacity: 0.8,
-                              }}
-                            >
-                              {item.sources.join(', ')}
-                            </span>
-                          </div>
-
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-xs)', fontWeight: 'var(--fw-semibold)', color: 'var(--c-text-primary)' }}>
-                              {item.hex}
-                            </span>
-                            <div style={{ display: 'flex', gap: 4 }}>
-                              <button
-                                className="btn btn-secondary btn-sm"
-                                style={{ height: 24, padding: '0 6px', fontSize: 11 }}
-                                onClick={() => handleCopy(item.hex)}
-                                title="Copy hex"
-                              >
-                                Copy
-                              </button>
-                              <button
-                                className="btn btn-secondary btn-sm"
-                                style={{ height: 24, padding: '0 6px', fontSize: 11 }}
-                                onClick={() => handleApply(item.hex)}
-                                title="Apply color to selected layer"
-                              >
-                                Apply
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
+        <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
+          {colors.length > 5 && (
+            <input
+              className="input"
+              style={{ width: 120, height: 28, fontSize: 'var(--fs-xs)' }}
+              placeholder="Filter hex..."
+              value={filterQuery}
+              onChange={e => setFilterQuery(e.target.value)}
+            />
+          )}
+          <button className="btn btn-secondary btn-sm" style={{ height: 28 }} onClick={handleScan} disabled={isLoading}>
+            {isLoading ? 'Scanning...' : 'Re-scan'}
+          </button>
+          {colors.length > 0 && (
+            <button className="btn btn-primary btn-sm" style={{ height: 28 }} onClick={handleCreateStyles}>
+              Create Color Styles ({colors.length})
+            </button>
           )}
         </div>
+      </div>
+
+      {/* Results Section */}
+      <div className="tool-scroll-list" style={{ padding: 'var(--sp-3) var(--sp-5)' }}>
+        {hasScanned && (
+          <div className="card" style={{ overflow: 'hidden' }}>
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--sp-2) var(--sp-4)', borderBottom: '1px solid var(--c-border-subtle)' }}>
+              <span className="card-title" style={{ fontSize: 12 }}>
+                Found {colors.length} Unique Color{colors.length !== 1 ? 's' : ''} across {totalLayers} layer{totalLayers !== 1 ? 's' : ''}
+              </span>
+            </div>
+
+            <div className="card-body" style={{ padding: 0 }}>
+              {filtered.length === 0 ? (
+                <div style={{ padding: 'var(--sp-6)', textAlign: 'center', color: 'var(--c-text-secondary)', fontSize: 'var(--fs-sm)' }}>
+                  {colors.length === 0
+                    ? 'No solid fill or stroke colors found in the scanned layers.'
+                    : 'No colors matching your filter.'}
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 'var(--sp-2)', padding: 'var(--sp-3)' }}>
+                  {filtered.map(item => {
+                    const useWhite = shouldUseWhiteText(item.hex)
+                    return (
+                      <div
+                        key={item.hex}
+                        style={{
+                          background: 'var(--c-surface)',
+                          border: '1px solid var(--c-border)',
+                          borderRadius: 'var(--r-md)',
+                          padding: 'var(--sp-2)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 6,
+                          boxShadow: 'var(--shadow-xs)',
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: '100%',
+                            height: 38,
+                            borderRadius: 'var(--r-sm)',
+                            background: item.hex,
+                            border: '1px solid rgba(0,0,0,0.08)',
+                            display: 'flex',
+                            alignItems: 'flex-end',
+                            justifyContent: 'space-between',
+                            padding: '2px 4px',
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: 9,
+                              fontWeight: 700,
+                              color: useWhite ? '#ffffff' : '#000000',
+                              background: useWhite ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.4)',
+                              padding: '1px 4px',
+                              borderRadius: 'var(--r-sm)',
+                            }}
+                          >
+                            {item.count}×
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 9,
+                              color: useWhite ? '#ffffff' : '#000000',
+                              opacity: 0.8,
+                            }}
+                          >
+                            {item.sources.join(', ')}
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 'var(--fw-semibold)', color: 'var(--c-text-primary)' }}>
+                            {item.hex}
+                          </span>
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            <button
+                              className="btn btn-secondary btn-sm"
+                              style={{ height: 22, padding: '0 5px', fontSize: 10 }}
+                              onClick={() => handleCopy(item.hex)}
+                              title="Copy hex"
+                            >
+                              Copy
+                            </button>
+                            <button
+                              className="btn btn-secondary btn-sm"
+                              style={{ height: 22, padding: '0 5px', fontSize: 10 }}
+                              onClick={() => handleApply(item.hex)}
+                              title="Apply color to selected layer"
+                            >
+                              Apply
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { sendToPlugin } from '../../utils/messaging'
 import type { SelectionInfo, ImageBytesPayload } from '../../../shared/types'
-import { SelectionBanner } from '../../components/Selection/SelectionBanner'
 import { BackgroundAI } from '../../../ai/BackgroundAI'
 import type { AIRefineOptions, AIRuntimeBackend } from '../../../ai/types'
 
@@ -138,8 +137,8 @@ export const BackgroundRemover: React.FC<Props> = ({
     const pCanvas = previewCanvasRef.current
     const pCtx = pCanvas.getContext('2d')!
 
-    const maxDispWidth = 520
-    const maxDispHeight = 320
+    const maxDispWidth = 660
+    const maxDispHeight = 420
     const scale = Math.min(maxDispWidth / width, maxDispHeight / height, 1)
 
     const dispW = Math.round(width * scale)
@@ -338,289 +337,307 @@ export const BackgroundRemover: React.FC<Props> = ({
   }
 
   return (
-    <div className="tool-view">
-      <div className="tool-header">
-        <div className="tool-breadcrumb">Images / Background Remover</div>
-        <h1 className="tool-title">Background Remover</h1>
-        <p className="tool-desc">
-          Remove backgrounds with studio-grade precision using BRIA RMBG-1.4 (1024×1024 high-resolution matting).
-        </p>
+    <div className="tool-view" style={{ height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      {/* Header */}
+      <div className="tool-header" style={{ paddingBottom: 'var(--sp-2)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div className="tool-breadcrumb">Images / Background Remover</div>
+            <h1 className="tool-title" style={{ margin: 0 }}>Background Remover</h1>
+          </div>
+          <span style={{ fontSize: 10, color: 'var(--c-text-tertiary)' }}>
+            BRIA RMBG-1.4 (1024×1024 HD)
+          </span>
+        </div>
       </div>
 
-      <div className="main-scroll" style={{ paddingBottom: 80 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)', maxWidth: 640 }}>
-          <SelectionBanner
-            selection={selection}
-            requiresSelection={true}
-            selectionHint="Select an image layer on the canvas to remove its background."
-          />
-
-          {/* Load / Image Selection Card */}
-          <div className="card">
-            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
-              <button
-                className="btn btn-secondary btn-full"
-                onClick={handleLoad}
-                disabled={!selection || selection.count === 0 || isProcessing}
-                id="bg-remover-load-btn"
-              >
-                {originalImageData ? 'Re-load Selected Image' : 'Load Image from Selection'}
-              </button>
-
-              {previewUrl && originalImageData && (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--sp-2) var(--sp-3)', background: 'var(--c-bg)', borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
-                    <img
-                      src={previewUrl}
-                      alt="Thumbnail"
-                      style={{
-                        width: 44,
-                        height: 44,
-                        borderRadius: 'var(--r-sm)',
-                        objectFit: 'cover',
-                        border: '1px solid var(--c-border)',
-                      }}
-                    />
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text-primary)' }}>
-                        {selection?.nodeName || 'Selected Image'}
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)' }}>
-                        {originalImageData.width} × {originalImageData.height} px
-                      </div>
+      <div className="tool-body" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', overflow: 'hidden', padding: 0 }}>
+        {/* Top Area: Controls, Selection Info, Model status & CTAs */}
+        <div className="card" style={{ flexShrink: 0, padding: 'var(--sp-2) var(--sp-3)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {/* Row 1: Selection & Mode Tabs */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--sp-2)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
+              {previewUrl && originalImageData ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                  <img
+                    src={previewUrl}
+                    alt="Thumbnail"
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 'var(--r-sm)',
+                      objectFit: 'cover',
+                      border: '1px solid var(--c-border)',
+                      flexShrink: 0,
+                    }}
+                  />
+                  <div style={{ minWidth: 0 }}>
+                    <div className="truncate" style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-primary)' }}>
+                      {selection?.nodeName || 'Selected Image'}
+                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--c-text-tertiary)' }}>
+                      {originalImageData.width} × {originalImageData.height} px • 1024px Matting
                     </div>
                   </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--c-accent)', background: 'rgba(37, 99, 235, 0.08)', padding: '2px 8px', borderRadius: 4 }}>
-                      1024px Matting
-                    </span>
-                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--c-text-secondary)' }}>
+                  <span>🖼️</span>
+                  <span>{selection && selection.count > 0 ? `${selection.nodeName || 'Layer'} selected` : 'Select an image layer in Figma to begin'}</span>
+                  {selection && selection.count > 0 && (
+                    <span className="tag" style={{ fontSize: 9, padding: '1px 5px' }}>{selection.types[0] || 'Image'}</span>
+                  )}
                 </div>
               )}
             </div>
+
+            {/* If cutout exists, show tabs for Cutout / Original / Mask */}
+            {rawAlphaMask ? (
+              <div className="tabs" style={{ marginBottom: 0 }}>
+                <button
+                  className={`tab-btn${previewMode === 'cutout' ? ' active' : ''}`}
+                  onClick={() => setPreviewMode('cutout')}
+                  style={{ height: 26, fontSize: 11, padding: '0 8px' }}
+                >
+                  Cutout
+                </button>
+                <button
+                  className={`tab-btn${previewMode === 'original' ? ' active' : ''}`}
+                  onClick={() => setPreviewMode('original')}
+                  style={{ height: 26, fontSize: 11, padding: '0 8px' }}
+                >
+                  Original
+                </button>
+                <button
+                  className={`tab-btn${previewMode === 'mask' ? ' active' : ''}`}
+                  onClick={() => setPreviewMode('mask')}
+                  style={{ height: 26, fontSize: 11, padding: '0 8px' }}
+                >
+                  Alpha Mask
+                </button>
+              </div>
+            ) : (
+              <label style={{ fontSize: 10, color: 'var(--c-text-tertiary)', cursor: 'pointer', textDecoration: 'underline' }}>
+                Offline or custom model? Load local .onnx
+                <input
+                  type="file"
+                  accept=".onnx"
+                  style={{ display: 'none' }}
+                  onChange={handleLocalModelSelect}
+                  disabled={isProcessing}
+                />
+              </label>
+            )}
           </div>
 
-          {originalImageData && (
-            <>
-              {/* Primary Action Card */}
-              <div className="card" style={{ border: '1px solid var(--c-accent)', background: 'rgba(37, 99, 235, 0.02)' }}>
-                <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
-                  <button
-                    className="btn btn-primary btn-full btn-lg"
-                    onClick={runRemoval}
-                    disabled={isProcessing}
-                    style={{ height: 42, fontSize: 14, fontWeight: 600 }}
-                  >
-                    {isProcessing ? 'Removing Background…' : rawAlphaMask ? 'Re-run Removal' : 'Remove Background'}
-                  </button>
+          {/* Row 2: Action Buttons Row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={handleLoad}
+              disabled={!selection || selection.count === 0 || isProcessing}
+              id="bg-remover-load-btn"
+              style={{ fontSize: 11, height: 30, padding: '0 12px' }}
+            >
+              {originalImageData ? 'Re-load Selected Image' : 'Load Image from Selection'}
+            </button>
 
-                  {statusMessage && (
-                    <div style={{ fontSize: 12, color: 'var(--c-accent)', fontWeight: 500, textAlign: 'center' }}>
-                      {statusMessage}
-                    </div>
-                  )}
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={runRemoval}
+              disabled={!originalImageData || isProcessing}
+              style={{ fontSize: 11, height: 30, padding: '0 16px', fontWeight: 600 }}
+            >
+              {isProcessing ? 'Removing Background…' : rawAlphaMask ? 'Re-run Removal' : 'Remove Background'}
+            </button>
 
-                  {errorMessage && (
-                    <div style={{ fontSize: 12, color: 'var(--c-danger)', textAlign: 'center' }}>
-                      {errorMessage}
-                    </div>
-                  )}
+            {rawAlphaMask && (
+              <>
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={handleApply}
+                  disabled={!processedBytes}
+                  id="bg-remover-apply-btn"
+                  style={{ fontSize: 11, height: 30, padding: '0 14px', fontWeight: 600, background: '#10B981', borderColor: '#10B981' }}
+                >
+                  Apply to Figma
+                </button>
 
-                  <div style={{ display: 'flex', justifyContent: 'center', marginTop: 2 }}>
-                    <label style={{ fontSize: 11, color: 'var(--c-text-tertiary)', cursor: 'pointer', textDecoration: 'underline' }}>
-                      Offline or custom model? Load local .onnx
-                      <input
-                        type="file"
-                        accept=".onnx"
-                        style={{ display: 'none' }}
-                        onChange={handleLocalModelSelect}
-                        disabled={isProcessing}
-                      />
-                    </label>
-                  </div>
-                </div>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleDownload}
+                  disabled={!processedBytes}
+                  style={{ fontSize: 11, height: 30, padding: '0 10px' }}
+                  title="Download transparent PNG to your computer"
+                >
+                  Download PNG
+                </button>
+              </>
+            )}
+
+            {/* Status or error message inline */}
+            {statusMessage && (
+              <span style={{ fontSize: 11, color: 'var(--c-accent)', fontWeight: 500, marginLeft: 4 }}>
+                {statusMessage}
+              </span>
+            )}
+            {errorMessage && (
+              <span style={{ fontSize: 11, color: 'var(--c-danger)', fontWeight: 500, marginLeft: 4 }}>
+                {errorMessage}
+              </span>
+            )}
+          </div>
+
+          {/* Row 3 (Only when rawAlphaMask exists): Edge Refinement & Brush Toolbar */}
+          {rawAlphaMask && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', paddingTop: 4, borderTop: '1px solid var(--c-border-subtle)', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--c-text-secondary)' }}>Feather:</span>
+                <input
+                  type="range"
+                  className="slider"
+                  min={0}
+                  max={6}
+                  step={0.5}
+                  value={feather}
+                  onChange={e => setFeather(parseFloat(e.target.value))}
+                  style={{ width: 70 }}
+                />
+                <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', minWidth: 22 }}>{feather}px</span>
               </div>
 
-              {/* Live Preview Card */}
-              <div className="card">
-                <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span className="card-title">Preview Canvas</span>
-                  {rawAlphaMask && (
-                    <div className="tabs" style={{ marginBottom: 0 }}>
-                      <button
-                        className={`tab-btn${previewMode === 'cutout' ? ' active' : ''}`}
-                        onClick={() => setPreviewMode('cutout')}
-                      >
-                        Cutout
-                      </button>
-                      <button
-                        className={`tab-btn${previewMode === 'original' ? ' active' : ''}`}
-                        onClick={() => setPreviewMode('original')}
-                      >
-                        Original
-                      </button>
-                      <button
-                        className={`tab-btn${previewMode === 'mask' ? ' active' : ''}`}
-                        onClick={() => setPreviewMode('mask')}
-                      >
-                        Alpha Mask
-                      </button>
-                    </div>
-                  )}
-                </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={smoothEdges}
+                  onChange={e => setSmoothEdges(e.target.checked)}
+                />
+                <span>Smooth Edge</span>
+              </label>
 
-                <div className="card-body" style={{ textAlign: 'center' }}>
-                  <div
-                    style={{
-                      display: 'inline-block',
-                      background: 'repeating-conic-gradient(#d0d0d0 0% 25%, #f0f0f0 0% 50%) 0 0 / 16px 16px',
-                      borderRadius: 'var(--r-md)',
-                      border: '1px solid var(--c-border)',
-                      overflow: 'hidden',
-                      maxWidth: '100%',
-                      cursor: brushMode !== 'none' ? 'crosshair' : 'default',
-                    }}
-                  >
-                    <canvas
-                      ref={previewCanvasRef}
-                      onMouseDown={handleMouseDown}
-                      onMouseMove={handleMouseMove}
-                      onMouseUp={handleMouseUp}
-                      onMouseLeave={handleMouseUp}
-                      style={{ display: 'block', maxWidth: '100%' }}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
+                <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--c-text-secondary)', marginRight: 2 }}>Touch-Up:</span>
+                <button
+                  className={`btn btn-sm ${brushMode === 'remove' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setBrushMode(brushMode === 'remove' ? 'none' : 'remove')}
+                  style={{
+                    height: 22,
+                    fontSize: 10,
+                    padding: '0 8px',
+                    ...(brushMode === 'remove' ? { background: '#EF4444', borderColor: '#EF4444' } : {}),
+                  }}
+                >
+                  − Erase
+                </button>
+                <button
+                  className={`btn btn-sm ${brushMode === 'restore' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setBrushMode(brushMode === 'restore' ? 'none' : 'restore')}
+                  style={{
+                    height: 22,
+                    fontSize: 10,
+                    padding: '0 8px',
+                    ...(brushMode === 'restore' ? { background: '#10B981', borderColor: '#10B981' } : {}),
+                  }}
+                >
+                  + Restore
+                </button>
+
+                {brushMode !== 'none' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 4 }}>
+                    <input
+                      type="range"
+                      className="slider"
+                      min={10}
+                      max={100}
+                      value={brushSize}
+                      onChange={e => setBrushSize(parseInt(e.target.value))}
+                      style={{ width: 60 }}
                     />
+                    <span style={{ fontSize: 9, fontFamily: 'var(--font-mono)' }}>{brushSize}px</span>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setBrushMode('none')} style={{ height: 20, fontSize: 9, padding: '0 4px' }}>
+                      Done
+                    </button>
                   </div>
+                )}
 
-                  <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)', marginTop: 8 }}>
-                    {brushMode !== 'none'
-                      ? `Brush active: Paint on the image to ${brushMode === 'remove' ? 'erase extra background' : 'restore foreground details'}.`
-                      : rawAlphaMask
-                      ? 'Checkerboard indicates transparent background.'
-                      : 'Click "Remove Background" above to generate cutout.'}
-                  </div>
-                </div>
+                {manualAlphaMask && (
+                  <button className="btn btn-ghost btn-sm" onClick={resetManualTouchUps} style={{ height: 20, fontSize: 9, padding: '0 4px', color: 'var(--c-text-tertiary)' }}>
+                    Reset
+                  </button>
+                )}
               </div>
-
-              {/* Edge Refinement & Manual Touch-up */}
-              {rawAlphaMask && (
-                <div className="card">
-                  <div className="card-header">
-                    <span className="card-title">Edge Refinement & Polish</span>
-                  </div>
-
-                  <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
-                    {/* Feather & Smooth sliders */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-4)', alignItems: 'center' }}>
-                      <div className="field" style={{ margin: 0 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                          <label className="field-label" style={{ margin: 0 }}>Edge Feather</label>
-                          <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{feather}px</span>
-                        </div>
-                        <input
-                          type="range"
-                          className="slider"
-                          min={0}
-                          max={6}
-                          step={0.5}
-                          value={feather}
-                          onChange={e => setFeather(parseFloat(e.target.value))}
-                        />
-                      </div>
-
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', fontSize: 12, cursor: 'pointer', marginTop: 14 }}>
-                        <input
-                          type="checkbox"
-                          checked={smoothEdges}
-                          onChange={e => setSmoothEdges(e.target.checked)}
-                        />
-                        <span>Smooth Anti-Aliasing</span>
-                      </label>
-                    </div>
-
-                    {/* Touch-up Brush Controls */}
-                    <div style={{ borderTop: '1px solid var(--c-border-subtle)', paddingTop: 'var(--sp-3)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-primary)' }}>
-                          Manual Touch-Up Brush
-                        </span>
-                        {manualAlphaMask && (
-                          <button className="btn btn-ghost btn-sm" onClick={resetManualTouchUps} style={{ height: 24, fontSize: 11 }}>
-                            Reset Edits
-                          </button>
-                        )}
-                      </div>
-
-                      <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
-                        <button
-                          className={`btn btn-sm ${brushMode === 'remove' ? 'btn-primary' : 'btn-secondary'}`}
-                          onClick={() => setBrushMode(brushMode === 'remove' ? 'none' : 'remove')}
-                          style={brushMode === 'remove' ? { background: '#EF4444', borderColor: '#EF4444' } : undefined}
-                        >
-                          − Erase Background
-                        </button>
-                        <button
-                          className={`btn btn-sm ${brushMode === 'restore' ? 'btn-primary' : 'btn-secondary'}`}
-                          onClick={() => setBrushMode(brushMode === 'restore' ? 'none' : 'restore')}
-                          style={brushMode === 'restore' ? { background: '#10B981', borderColor: '#10B981' } : undefined}
-                        >
-                          + Restore Subject
-                        </button>
-                        {brushMode !== 'none' && (
-                          <button className="btn btn-ghost btn-sm" onClick={() => setBrushMode('none')}>
-                            Done
-                          </button>
-                        )}
-                      </div>
-
-                      {brushMode !== 'none' && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
-                          <span style={{ fontSize: 11, color: 'var(--c-text-tertiary)' }}>Brush Size:</span>
-                          <input
-                            type="range"
-                            className="slider"
-                            min={10}
-                            max={100}
-                            value={brushSize}
-                            onChange={e => setBrushSize(parseInt(e.target.value))}
-                            style={{ flex: 1 }}
-                          />
-                          <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', minWidth: 28 }}>
-                            {brushSize}px
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              {rawAlphaMask && (
-                <div style={{ display: 'flex', gap: 'var(--sp-3)' }}>
-                  <button
-                    className="btn btn-primary btn-full btn-lg"
-                    onClick={handleApply}
-                    disabled={!processedBytes}
-                    id="bg-remover-apply-btn"
-                    style={{ flex: 2 }}
-                  >
-                    Apply to Figma Layer
-                  </button>
-
-                  <button
-                    className="btn btn-secondary btn-lg"
-                    onClick={handleDownload}
-                    disabled={!processedBytes}
-                    style={{ flex: 1 }}
-                    title="Download transparent PNG to your computer"
-                  >
-                    Download PNG
-                  </button>
-                </div>
-              )}
-            </>
+            </div>
           )}
+        </div>
+
+        {/* Bottom Area: Full-Width Preview Canvas (flex: 1, minHeight: 0) */}
+        <div className="card" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div className="card-header" style={{ padding: '6px 12px', borderBottom: '1px solid var(--c-border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="card-title" style={{ fontSize: 11 }}>Preview Canvas</span>
+            <span style={{ fontSize: 10, color: 'var(--c-text-tertiary)' }}>
+              {brushMode !== 'none'
+                ? `Brush: ${brushMode === 'remove' ? 'Erase' : 'Restore'} (${brushSize}px) — drag on canvas to edit`
+                : rawAlphaMask
+                ? 'Checkerboard indicates transparent cutout'
+                : 'Click "Remove Background" to generate high-resolution cutout'}
+            </span>
+          </div>
+
+          <div
+            className="card-body"
+            style={{
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 12,
+              overflow: 'hidden',
+              background: 'var(--c-bg)',
+              minHeight: 0,
+            }}
+          >
+            {originalImageData ? (
+              <div
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'repeating-conic-gradient(#d0d0d0 0% 25%, #f0f0f0 0% 50%) 0 0 / 16px 16px',
+                  borderRadius: 'var(--r-md)',
+                  border: '1px solid var(--c-border)',
+                  overflow: 'hidden',
+                  cursor: brushMode !== 'none' ? 'crosshair' : 'default',
+                  boxShadow: 'var(--shadow-sm)',
+                }}
+              >
+                <canvas
+                  ref={previewCanvasRef}
+                  onMouseDown={handleMouseDown}
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  onMouseLeave={handleMouseUp}
+                  style={{
+                    display: 'block',
+                    maxWidth: '100%',
+                    maxHeight: '440px',
+                    objectFit: 'contain',
+                  }}
+                />
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', color: 'var(--c-text-tertiary)' }}>
+                <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.35, margin: '0 auto 8px' }}>
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                  <circle cx="8.5" cy="8.5" r="1.5"/>
+                  <polyline points="21 15 16 10 5 21"/>
+                </svg>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text-secondary)' }}>No Image Loaded</div>
+                <div style={{ fontSize: 11, marginTop: 4 }}>Select an image layer in Figma and click "Load Image from Selection"</div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

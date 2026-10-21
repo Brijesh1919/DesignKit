@@ -330,44 +330,105 @@
 }
 
 .tool-header {
-  padding: var(--sp-5) var(--sp-6) var(--sp-4);
-  border-bottom: 1px solid var(--c-border-subtle);
+  padding: var(--sp-2) var(--sp-5);
+  border-bottom: 1px solid var(--c-border);
   background: var(--c-surface);
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .tool-breadcrumb {
-  font-size: var(--fs-xs);
+  font-size: 10px;
   color: var(--c-text-tertiary);
-  margin-bottom: var(--sp-1);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  font-weight: var(--fw-medium);
+  font-weight: var(--fw-semibold);
+  line-height: 1.2;
 }
 
 .tool-title {
-  font-size: var(--fs-2xl);
+  font-size: 16px;
   font-weight: var(--fw-bold);
   color: var(--c-text-primary);
-  letter-spacing: -0.3px;
-  line-height: var(--lh-tight);
+  letter-spacing: -0.2px;
+  line-height: 1.2;
 }
 
-.tool-description {
-  font-size: var(--fs-sm);
+.tool-description,
+.tool-desc {
+  font-size: 11px;
   color: var(--c-text-tertiary);
-  margin-top: var(--sp-1);
-  line-height: var(--lh-normal);
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tool-body {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: var(--sp-5) var(--sp-6);
+  padding: var(--sp-3) var(--sp-5);
   display: flex;
   flex-direction: column;
-  gap: var(--sp-5);
+  gap: var(--sp-3);
+  min-height: 0;
+}
+
+/* Pinned CTA Action Bar */
+.tool-footer,
+.tool-action-bar {
+  flex-shrink: 0;
+  padding: var(--sp-2) var(--sp-5);
+  background: var(--c-surface);
+  border-top: 1px solid var(--c-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  z-index: 10;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.03);
+}
+
+/* 2-pane studio split layout for screens that fit on single view */
+.tool-split-view {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5);
+}
+
+.tool-pane-left {
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  flex-shrink: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+}
+
+.tool-pane-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+}
+
+/* Dedicated internal scroll area for lists inside cards or panes */
+.tool-scroll-list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
   min-height: 0;
 }
 
@@ -375,21 +436,20 @@
 .card {
   background: var(--c-surface);
   border: 1px solid var(--c-border);
-  border-radius: var(--r-xl);
+  border-radius: var(--r-lg);
   box-shadow: var(--shadow-xs);
   height: auto;
-  flex-shrink: 0;
 }
 
 .card-header {
-  padding: var(--sp-4) var(--sp-4) 0;
+  padding: var(--sp-3) var(--sp-4) 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
 .card-title {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-xs);
   font-weight: var(--fw-semibold);
   color: var(--c-text-secondary);
   text-transform: uppercase;
@@ -397,7 +457,7 @@
 }
 
 .card-body {
-  padding: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
 }
 
 /* ---- Form elements ---- */
@@ -714,13 +774,14 @@
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-3);
+  padding: 4px var(--sp-3);
   background: var(--c-accent-subtle);
   border: 1px solid var(--c-accent-border);
-  border-radius: var(--r-lg);
-  font-size: var(--fs-xs);
+  border-radius: var(--r-md);
+  font-size: 11px;
   color: var(--c-accent);
   font-weight: var(--fw-medium);
+  flex-shrink: 0;
 }
 
 .selection-banner.empty {

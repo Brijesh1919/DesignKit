@@ -64,7 +64,7 @@ export const TextSizeChecker: React.FC<Props> = ({ selection, onSuccess, onError
         </p>
       </div>
 
-      <div className="tool-body">
+      <div className="tool-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', overflow: 'hidden' }}>
         <SelectionBanner
           selection={selection}
           selectionHint="Select text layers or frames to audit, or switch to Current Page."
@@ -72,65 +72,71 @@ export const TextSizeChecker: React.FC<Props> = ({ selection, onSuccess, onError
 
         {/* Controls */}
         <div
+          className="card"
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--sp-3)',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
+            padding: 'var(--sp-2) var(--sp-3)',
+            flexShrink: 0,
           }}
         >
-          <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
-            <button
-              className={`btn btn-sm ${scope === 'selection' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => {
-                setScope('selection')
-                requestAnalysis(minSize, 'selection')
-              }}
-            >
-              Selected Layers
-            </button>
-            <button
-              className={`btn btn-sm ${scope === 'page' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => {
-                setScope('page')
-                requestAnalysis(minSize, 'page')
-              }}
-            >
-              Current Page
-            </button>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--c-text-tertiary)', textTransform: 'uppercase' }}>
-              Minimum Size:
-            </span>
-            {[10, 12, 14, 16].map(sz => (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+            <div style={{ display: 'inline-flex', background: 'var(--c-bg)', padding: 2, borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)' }}>
               <button
-                key={sz}
-                className={`btn btn-sm ${minSize === sz ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setMinSize(sz)}
+                className={`btn btn-sm ${scope === 'selection' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => {
+                  setScope('selection')
+                  requestAnalysis(minSize, 'selection')
+                }}
+                style={{ height: 26, fontSize: 11, padding: '0 var(--sp-2)' }}
               >
-                {sz}px
+                Selected Layers
               </button>
-            ))}
+              <button
+                className={`btn btn-sm ${scope === 'page' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => {
+                  setScope('page')
+                  requestAnalysis(minSize, 'page')
+                }}
+                style={{ height: 26, fontSize: 11, padding: '0 var(--sp-2)' }}
+              >
+                Current Page
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--c-text-tertiary)' }}>
+                Min Size:
+              </span>
+              <div style={{ display: 'inline-flex', background: 'var(--c-bg)', padding: 2, borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)' }}>
+                {[10, 12, 14, 16].map(sz => (
+                  <button
+                    key={sz}
+                    className={`btn btn-sm ${minSize === sz ? 'btn-primary' : 'btn-ghost'}`}
+                    onClick={() => setMinSize(sz)}
+                    style={{ height: 26, fontSize: 11, padding: '0 var(--sp-2)' }}
+                  >
+                    {sz}px
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Stat summaries */}
         {items.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--sp-3)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--sp-2)', flexShrink: 0 }}>
             <div
               className="card"
               style={{
-                padding: 'var(--sp-3)',
+                padding: 'var(--sp-2) var(--sp-3)',
                 cursor: 'pointer',
-                border: filter === 'all' ? '1.5px solid var(--c-accent)' : '1px solid var(--c-border)',
+                border: filter === 'all' ? '1.5px solid var(--c-primary)' : '1px solid var(--c-border)',
+                background: filter === 'all' ? 'rgba(37, 99, 235, 0.04)' : 'var(--c-surface)',
               }}
               onClick={() => setFilter('all')}
             >
-              <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)' }}>Total Text Layers</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-text-primary)', marginTop: 2 }}>
+              <div style={{ fontSize: 10, color: 'var(--c-text-tertiary)' }}>Total Text Layers</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-primary)' }}>
                 {items.length}
               </div>
             </div>
@@ -138,14 +144,15 @@ export const TextSizeChecker: React.FC<Props> = ({ selection, onSuccess, onError
             <div
               className="card"
               style={{
-                padding: 'var(--sp-3)',
+                padding: 'var(--sp-2) var(--sp-3)',
                 cursor: 'pointer',
                 border: filter === 'warning' ? '1.5px solid var(--c-warning)' : '1px solid var(--c-border)',
+                background: filter === 'warning' ? 'rgba(245, 158, 11, 0.05)' : 'var(--c-surface)',
               }}
               onClick={() => setFilter('warning')}
             >
-              <div style={{ fontSize: 11, color: 'var(--c-warning)' }}>Under {minSize}px</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-warning)', marginTop: 2 }}>
+              <div style={{ fontSize: 10, color: 'var(--c-warning)' }}>Under {minSize}px</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-warning)' }}>
                 {warningCount}
               </div>
             </div>
@@ -153,14 +160,15 @@ export const TextSizeChecker: React.FC<Props> = ({ selection, onSuccess, onError
             <div
               className="card"
               style={{
-                padding: 'var(--sp-3)',
+                padding: 'var(--sp-2) var(--sp-3)',
                 cursor: 'pointer',
                 border: filter === 'pass' ? '1.5px solid var(--c-success)' : '1px solid var(--c-border)',
+                background: filter === 'pass' ? 'rgba(16, 185, 129, 0.05)' : 'var(--c-surface)',
               }}
               onClick={() => setFilter('pass')}
             >
-              <div style={{ fontSize: 11, color: 'var(--c-success)' }}>Passing ({minSize}px+)</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-success)', marginTop: 2 }}>
+              <div style={{ fontSize: 10, color: 'var(--c-success)' }}>Passing ({minSize}px+)</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-success)' }}>
                 {passCount}
               </div>
             </div>
@@ -169,11 +177,11 @@ export const TextSizeChecker: React.FC<Props> = ({ selection, onSuccess, onError
 
         {/* Results */}
         {loading ? (
-          <div className="empty-state">
+          <div className="empty-state" style={{ flex: 1 }}>
             <div style={{ fontSize: 13, color: 'var(--c-text-tertiary)' }}>Auditing text sizes…</div>
           </div>
         ) : items.length === 0 && analyzed ? (
-          <div className="empty-state">
+          <div className="empty-state" style={{ flex: 1 }}>
             <div className="empty-state-title">No text layers found</div>
             <div className="empty-state-body">
               {scope === 'selection'
@@ -182,15 +190,16 @@ export const TextSizeChecker: React.FC<Props> = ({ selection, onSuccess, onError
             </div>
           </div>
         ) : items.length > 0 ? (
-          <div className="card" style={{ overflow: 'hidden' }}>
+          <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div
               className="card-header"
               style={{
-                paddingBottom: 'var(--sp-3)',
+                padding: 'var(--sp-2) var(--sp-3)',
                 borderBottom: '1px solid var(--c-border-subtle)',
+                flexShrink: 0,
               }}
             >
-              <div className="card-title">
+              <div className="card-title" style={{ fontSize: 12 }}>
                 {filter === 'warning'
                   ? `${warningCount} Text Layers Below ${minSize}px`
                   : filter === 'pass'
@@ -199,7 +208,7 @@ export const TextSizeChecker: React.FC<Props> = ({ selection, onSuccess, onError
               </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 380, overflowY: 'auto' }}>
+            <div className="tool-scroll-list" style={{ flex: 1, padding: 0 }}>
               {filteredItems.map((item, idx) => {
                 const isWarning = item.status === 'WARNING'
                 return (
@@ -209,35 +218,28 @@ export const TextSizeChecker: React.FC<Props> = ({ selection, onSuccess, onError
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      padding: 'var(--sp-3) var(--sp-4)',
-                      borderBottom:
-                        idx < filteredItems.length - 1 ? '1px solid var(--c-border-subtle)' : 'none',
+                      padding: 'var(--sp-2) var(--sp-3)',
+                      borderBottom: '1px solid var(--c-border-subtle)',
                       cursor: 'pointer',
                       transition: 'background 120ms ease',
                     }}
                     onClick={() => handleFocus(item.nodeId)}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.background = 'var(--c-sidebar-item-hover)'
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.background = 'transparent'
-                    }}
                     title="Click to focus text in Figma"
                   >
                     <div style={{ minWidth: 0, flex: 1, paddingRight: 'var(--sp-3)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text-primary)' }}>
-                          {item.nodeName}
+                        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-primary)' }}>
+                          {item.nodeName} <span style={{ fontSize: 10, color: 'var(--c-primary)' }}>↗</span>
                         </span>
-                        <span className="tag" style={{ fontSize: 10 }}>
+                        <span className="tag" style={{ fontSize: 9, padding: '1px 5px' }}>
                           {item.fontWeight}
                         </span>
                       </div>
                       <div
                         style={{
-                          fontSize: 12,
+                          fontSize: 11,
                           color: 'var(--c-text-secondary)',
-                          marginTop: 3,
+                          marginTop: 2,
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
@@ -246,21 +248,18 @@ export const TextSizeChecker: React.FC<Props> = ({ selection, onSuccess, onError
                         "{item.textSnippet}"
                       </div>
                       {isWarning && (
-                        <div style={{ fontSize: 11, color: 'var(--c-warning)', marginTop: 2, fontWeight: 500 }}>
-                          WARNING: Text is smaller than {minSize}px ({item.fontSize}px).
+                        <div style={{ fontSize: 10, color: 'var(--c-warning)', marginTop: 1, fontWeight: 500 }}>
+                          Below {minSize}px ({item.fontSize}px)
                         </div>
                       )}
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', flexShrink: 0 }}>
-                      <span style={{ fontSize: 14, fontWeight: 700, fontFamily: 'var(--font-mono)', color: isWarning ? 'var(--c-warning)' : 'var(--c-text-primary)' }}>
-                        {item.fontSize} px
-                      </span>
                       <span
                         className={isWarning ? 'tag tag-warning' : 'tag tag-success'}
-                        style={{ fontSize: 10, fontWeight: 600 }}
+                        style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px' }}
                       >
-                        {item.status}
+                        {item.fontSize}px
                       </span>
                     </div>
                   </div>
@@ -275,3 +274,4 @@ export const TextSizeChecker: React.FC<Props> = ({ selection, onSuccess, onError
 }
 
 export default TextSizeChecker
+

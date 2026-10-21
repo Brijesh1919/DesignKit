@@ -77,59 +77,59 @@ export const TextStyleExtractor: React.FC<Props> = ({ selection, onSuccess, onEr
         </p>
       </div>
 
-      <div className="main-scroll">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)', maxWidth: 680 }}>
-          {/* Controls Bar */}
-          <div className="card">
-            <div className="card-body" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--sp-3)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
-                <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 'var(--fw-medium)', color: 'var(--c-text-secondary)' }}>
-                  Scope:
-                </span>
-                <div style={{ display: 'inline-flex', background: 'var(--c-bg)', padding: 2, borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)' }}>
-                  <button
-                    className={`btn btn-sm ${scope === 'selection' ? 'btn-primary' : 'btn-ghost'}`}
-                    onClick={() => setScope('selection')}
-                    style={{ height: 26, padding: '0 var(--sp-3)' }}
-                  >
-                    Selection
-                  </button>
-                  <button
-                    className={`btn btn-sm ${scope === 'page' ? 'btn-primary' : 'btn-ghost'}`}
-                    onClick={() => setScope('page')}
-                    style={{ height: 26, padding: '0 var(--sp-3)' }}
-                  >
-                    Entire Page
-                  </button>
-                </div>
-              </div>
-
-              <button className="btn btn-secondary btn-sm" onClick={handleScan} disabled={isLoading}>
-                {isLoading ? 'Scanning...' : 'Re-scan'}
+      {/* Pinned Controls Bar & Tabs */}
+      <div style={{ padding: 'var(--sp-2) var(--sp-5) 0', background: 'var(--c-surface)', borderBottom: '1px solid var(--c-border)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--sp-2)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+            <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 'var(--fw-medium)', color: 'var(--c-text-secondary)' }}>
+              Scope:
+            </span>
+            <div style={{ display: 'inline-flex', background: 'var(--c-bg)', padding: 2, borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)' }}>
+              <button
+                className={`btn btn-sm ${scope === 'selection' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setScope('selection')}
+                style={{ height: 26, padding: '0 var(--sp-3)', fontSize: 11 }}
+              >
+                Selection
+              </button>
+              <button
+                className={`btn btn-sm ${scope === 'page' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setScope('page')}
+                style={{ height: 26, padding: '0 var(--sp-3)', fontSize: 11 }}
+              >
+                Entire Page
               </button>
             </div>
           </div>
 
-          {/* Tabs */}
-          <div style={{ display: 'flex', gap: 'var(--sp-2)', borderBottom: '1px solid var(--c-border)' }}>
-            <button
-              className={`btn btn-sm ${activeTab === 'styles' ? 'btn-primary' : 'btn-ghost'}`}
-              onClick={() => setActiveTab('styles')}
-              style={{ borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}
-            >
-              Document Styles ({localStylesCount})
-            </button>
-            <button
-              className={`btn btn-sm ${activeTab === 'unstyled' ? 'btn-primary' : 'btn-ghost'}`}
-              onClick={() => setActiveTab('unstyled')}
-              style={{ borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}
-            >
-              Unstyled Layers ({unstyledCount})
-            </button>
-          </div>
+          <button className="btn btn-secondary btn-sm" style={{ height: 28 }} onClick={handleScan} disabled={isLoading}>
+            {isLoading ? 'Scanning...' : 'Re-scan'}
+          </button>
+        </div>
 
-          {/* Tab 1: Document Styles */}
-          {activeTab === 'styles' && (
+        {/* Tabs */}
+        <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
+          <button
+            className={`btn btn-sm ${activeTab === 'styles' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => setActiveTab('styles')}
+            style={{ borderBottomLeftRadius: 0, borderBottomRightRadius: 0, height: 28, fontSize: 11 }}
+          >
+            Document Styles ({localStylesCount})
+          </button>
+          <button
+            className={`btn btn-sm ${activeTab === 'unstyled' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => setActiveTab('unstyled')}
+            style={{ borderBottomLeftRadius: 0, borderBottomRightRadius: 0, height: 28, fontSize: 11 }}
+          >
+            Unstyled Layers ({unstyledCount})
+          </button>
+        </div>
+      </div>
+
+      {/* Scrollable Content */}
+      <div className="tool-scroll-list" style={{ padding: 'var(--sp-3) var(--sp-5)' }}>
+        {/* Tab 1: Document Styles */}
+        {activeTab === 'styles' && (
             <div className="card">
               <div className="card-body" style={{ padding: 0 }}>
                 {localStylesCount === 0 ? (
@@ -260,7 +260,6 @@ export const TextStyleExtractor: React.FC<Props> = ({ selection, onSuccess, onEr
               </div>
             </div>
           )}
-        </div>
       </div>
     </div>
   )

@@ -60,58 +60,64 @@ export const DesignAudit: React.FC<Props> = ({ selection, onSuccess, onError }) 
         </p>
       </div>
 
-      <div className="tool-body">
+      <div className="tool-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', overflow: 'hidden' }}>
         <SelectionBanner
           selection={selection}
           selectionHint="Select layers or frames to audit, or switch to Current Page."
         />
 
         {/* Scope bar */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
+        <div className="card" style={{ padding: 'var(--sp-2) var(--sp-3)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--sp-2)' }}>
+            <div style={{ display: 'inline-flex', background: 'var(--c-bg)', padding: 2, borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)' }}>
+              <button
+                className={`btn btn-sm ${scope === 'selection' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => {
+                  setScope('selection')
+                  requestAudit('selection')
+                }}
+                style={{ height: 26, fontSize: 11, padding: '0 var(--sp-2)' }}
+              >
+                Selected Layers
+              </button>
+              <button
+                className={`btn btn-sm ${scope === 'page' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => {
+                  setScope('page')
+                  requestAudit('page')
+                }}
+                style={{ height: 26, fontSize: 11, padding: '0 var(--sp-2)' }}
+              >
+                Current Page
+              </button>
+            </div>
+
             <button
-              className={`btn btn-sm ${scope === 'selection' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => {
-                setScope('selection')
-                requestAudit('selection')
-              }}
+              className="btn btn-secondary btn-sm"
+              onClick={() => requestAudit(scope)}
+              disabled={loading}
+              style={{ height: 26, fontSize: 11 }}
             >
-              Selected Layers
-            </button>
-            <button
-              className={`btn btn-sm ${scope === 'page' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => {
-                setScope('page')
-                requestAudit('page')
-              }}
-            >
-              Current Page
+              {loading ? 'Auditing…' : 'Re-audit'}
             </button>
           </div>
-
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={() => requestAudit(scope)}
-            disabled={loading}
-          >
-            {loading ? 'Auditing…' : 'Re-audit'}
-          </button>
         </div>
 
         {/* Category Summary Cards */}
         {report && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--sp-3)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--sp-2)', flexShrink: 0 }}>
             <div
               className="card"
               style={{
-                padding: 'var(--sp-3)',
+                padding: 'var(--sp-2) var(--sp-3)',
                 cursor: 'pointer',
-                border: activeCategory === 'all' ? '1.5px solid var(--c-accent)' : '1px solid var(--c-border)',
+                border: activeCategory === 'all' ? '1.5px solid var(--c-primary)' : '1px solid var(--c-border)',
+                background: activeCategory === 'all' ? 'rgba(37, 99, 235, 0.04)' : 'var(--c-surface)',
               }}
               onClick={() => setActiveCategory('all')}
             >
-              <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)' }}>Total Issues</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-text-primary)', marginTop: 2 }}>
+              <div style={{ fontSize: 10, color: 'var(--c-text-tertiary)' }}>Total Issues</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-primary)' }}>
                 {report.totalIssues}
               </div>
             </div>
@@ -119,14 +125,15 @@ export const DesignAudit: React.FC<Props> = ({ selection, onSuccess, onError }) 
             <div
               className="card"
               style={{
-                padding: 'var(--sp-3)',
+                padding: 'var(--sp-2) var(--sp-3)',
                 cursor: 'pointer',
-                border: activeCategory === 'naming' ? '1.5px solid var(--c-accent)' : '1px solid var(--c-border)',
+                border: activeCategory === 'naming' ? '1.5px solid var(--c-primary)' : '1px solid var(--c-border)',
+                background: activeCategory === 'naming' ? 'rgba(37, 99, 235, 0.04)' : 'var(--c-surface)',
               }}
               onClick={() => setActiveCategory('naming')}
             >
-              <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)' }}>Naming</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-text-primary)', marginTop: 2 }}>
+              <div style={{ fontSize: 10, color: 'var(--c-text-tertiary)' }}>Naming</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-primary)' }}>
                 {report.counts.Naming}
               </div>
             </div>
@@ -134,14 +141,15 @@ export const DesignAudit: React.FC<Props> = ({ selection, onSuccess, onError }) 
             <div
               className="card"
               style={{
-                padding: 'var(--sp-3)',
+                padding: 'var(--sp-2) var(--sp-3)',
                 cursor: 'pointer',
-                border: activeCategory === 'structure' ? '1.5px solid var(--c-accent)' : '1px solid var(--c-border)',
+                border: activeCategory === 'structure' ? '1.5px solid var(--c-primary)' : '1px solid var(--c-border)',
+                background: activeCategory === 'structure' ? 'rgba(37, 99, 235, 0.04)' : 'var(--c-surface)',
               }}
               onClick={() => setActiveCategory('structure')}
             >
-              <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)' }}>Structure</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-text-primary)', marginTop: 2 }}>
+              <div style={{ fontSize: 10, color: 'var(--c-text-tertiary)' }}>Structure</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-primary)' }}>
                 {report.counts.Structure}
               </div>
             </div>
@@ -149,14 +157,15 @@ export const DesignAudit: React.FC<Props> = ({ selection, onSuccess, onError }) 
             <div
               className="card"
               style={{
-                padding: 'var(--sp-3)',
+                padding: 'var(--sp-2) var(--sp-3)',
                 cursor: 'pointer',
-                border: activeCategory === 'styles' ? '1.5px solid var(--c-accent)' : '1px solid var(--c-border)',
+                border: activeCategory === 'styles' ? '1.5px solid var(--c-primary)' : '1px solid var(--c-border)',
+                background: activeCategory === 'styles' ? 'rgba(37, 99, 235, 0.04)' : 'var(--c-surface)',
               }}
               onClick={() => setActiveCategory('styles')}
             >
-              <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)' }}>Styles</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-text-primary)', marginTop: 2 }}>
+              <div style={{ fontSize: 10, color: 'var(--c-text-tertiary)' }}>Styles</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text-primary)' }}>
                 {report.counts.Styles}
               </div>
             </div>
@@ -165,34 +174,35 @@ export const DesignAudit: React.FC<Props> = ({ selection, onSuccess, onError }) 
 
         {/* Results */}
         {loading ? (
-          <div className="empty-state">
+          <div className="empty-state" style={{ flex: 1 }}>
             <div style={{ fontSize: 13, color: 'var(--c-text-tertiary)' }}>Running design audit…</div>
           </div>
         ) : report && report.totalIssues === 0 && analyzed ? (
-          <div className="empty-state">
+          <div className="empty-state" style={{ flex: 1 }}>
             <div className="empty-state-title">✨ Zero issues detected!</div>
             <div className="empty-state-body">
               Your layers adhere to clean naming, tidy structure, and healthy style tokens.
             </div>
           </div>
         ) : filteredIssues.length > 0 ? (
-          <div className="card" style={{ overflow: 'hidden' }}>
+          <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div
               className="card-header"
               style={{
-                paddingBottom: 'var(--sp-3)',
+                padding: 'var(--sp-2) var(--sp-3)',
                 borderBottom: '1px solid var(--c-border-subtle)',
+                flexShrink: 0,
               }}
             >
-              <div className="card-title">
+              <div className="card-title" style={{ fontSize: 12 }}>
                 {activeCategory === 'all'
                   ? `All Issues (${report?.totalIssues})`
                   : `${activeCategory.toUpperCase()} Issues (${filteredIssues.length})`}
               </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 380, overflowY: 'auto' }}>
-              {filteredIssues.map((issue, idx) => {
+            <div className="tool-scroll-list" style={{ flex: 1, padding: 0 }}>
+              {filteredIssues.map((issue) => {
                 const isCrit = issue.severity === 'Critical'
                 const isWarn = issue.severity === 'Warning'
                 return (
@@ -202,31 +212,24 @@ export const DesignAudit: React.FC<Props> = ({ selection, onSuccess, onError }) 
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      padding: 'var(--sp-3) var(--sp-4)',
-                      borderBottom:
-                        idx < filteredIssues.length - 1 ? '1px solid var(--c-border-subtle)' : 'none',
+                      padding: 'var(--sp-2) var(--sp-3)',
+                      borderBottom: '1px solid var(--c-border-subtle)',
                       cursor: 'pointer',
                       transition: 'background 120ms ease',
                     }}
                     onClick={() => handleFocus(issue.nodeId)}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.background = 'var(--c-sidebar-item-hover)'
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.background = 'transparent'
-                    }}
                     title="Click to focus in Figma"
                   >
-                    <div style={{ minWidth: 0, flex: 1, paddingRight: 'var(--sp-3)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text-primary)' }}>
-                          {issue.message}
+                    <div style={{ minWidth: 0, flex: 1, paddingRight: 'var(--sp-2)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-1)' }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-primary)' }}>
+                          {issue.message} <span style={{ fontSize: 10, color: 'var(--c-primary)' }}>↗</span>
                         </span>
-                        <span className="tag" style={{ fontSize: 10 }}>
+                        <span className="tag" style={{ fontSize: 9, padding: '1px 5px' }}>
                           {issue.category}
                         </span>
                       </div>
-                      <div style={{ fontSize: 12, color: 'var(--c-text-tertiary)', marginTop: 2 }}>
+                      <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)', marginTop: 1 }}>
                         Layer: <span style={{ color: 'var(--c-text-secondary)', fontWeight: 500 }}>"{issue.nodeName}"</span>
                         {issue.details ? ` — ${issue.details}` : ''}
                       </div>
@@ -241,13 +244,10 @@ export const DesignAudit: React.FC<Props> = ({ selection, onSuccess, onError }) 
                             ? 'tag tag-warning'
                             : 'tag tag-accent'
                         }
-                        style={{ fontSize: 10, fontWeight: 600 }}
+                        style={{ fontSize: 9, fontWeight: 600, padding: '1px 6px' }}
                       >
                         {issue.severity}
                       </span>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: 'var(--c-text-tertiary)' }}>
-                        <polyline points="9 18 15 12 9 6"/>
-                      </svg>
                     </div>
                   </div>
                 )
@@ -261,3 +261,4 @@ export const DesignAudit: React.FC<Props> = ({ selection, onSuccess, onError }) 
 }
 
 export default DesignAudit
+

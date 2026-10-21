@@ -167,370 +167,201 @@ export const MakeResponsive: React.FC<Props> = ({ selection, onSuccess, onError 
         </p>
       </div>
 
-      <div className="tool-body">
-        {/* Development Notice */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: 'var(--sp-3)',
-            padding: 'var(--sp-3) var(--sp-4)',
-            background: 'var(--c-warning-subtle, #FFFBEB)',
-            border: '1px solid var(--c-warning-border, #FDE68A)',
-            borderRadius: 'var(--radius-md, 8px)',
-            color: 'var(--c-warning-text, #92400E)',
-          }}
-        >
-          <span style={{ fontSize: 16, lineHeight: 1.2 }}>⚠️</span>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 2 }}>
-              Notice: This tool is currently under development
-            </div>
-            <div style={{ fontSize: 11, lineHeight: 1.5, opacity: 0.9 }}>
-              Automated responsive frame generation and layout reflow are still experimental. We recommend reviewing the generated layout and making minor adjustments for complex nested elements.
-            </div>
-          </div>
-        </div>
+      <div className="tool-body" style={{ flex: 1, overflow: 'hidden', padding: 0 }}>
+        <div className="tool-split-view" style={{ height: '100%' }}>
+          {/* Left Pane: Preset Viewports & Pinned Make Responsive CTA */}
+          <div className="tool-pane-left" style={{ width: 310, display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+            <SelectionBanner
+              selection={selection}
+              selectionHint="Select a top-level frame to transform."
+            />
 
-        <SelectionBanner
-          selection={selection}
-          selectionHint="Select a top-level frame to transform into a responsive layout."
-        />
-
-        {/* Viewport Selector */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(2, 1fr)',
-            gap: 'var(--sp-2)',
-          }}
-        >
-          {PRESETS.map(preset => {
-            const isActive = selectedPreset === preset.id
-            return (
-              <button
-                key={preset.id}
-                onClick={() => handlePresetChange(preset.id)}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'flex-start',
-                  gap: 4,
-                  padding: 'var(--sp-3)',
-                  background: isActive
-                    ? 'var(--c-accent-subtle, rgba(99,102,241,0.12))'
-                    : 'var(--c-surface)',
-                  border: `1.5px solid ${isActive ? 'var(--c-accent)' : 'var(--c-border-subtle)'}`,
-                  borderRadius: 'var(--radius-md)',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
-                  <span style={{ fontSize: 18 }}>{preset.icon}</span>
-                  <span
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 600,
-                      color: isActive ? 'var(--c-accent)' : 'var(--c-text-primary)',
-                    }}
-                  >
-                    {preset.label}
-                  </span>
-                  {isActive && (
-                    <span
-                      style={{
-                        marginLeft: 'auto',
-                        fontSize: 10,
-                        fontWeight: 700,
-                        color: 'var(--c-accent)',
-                        background: 'rgba(99,102,241,0.15)',
-                        padding: '2px 6px',
-                        borderRadius: 8,
-                      }}
-                    >
-                      SELECTED
-                    </span>
-                  )}
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)' }}>
-                  {preset.width} × {preset.height}px
-                </div>
-              </button>
-            )
-          })}
-        </div>
-
-        {/* Preview Panel */}
-        {hasFrame && (
-          <div className="card" style={{ overflow: 'hidden' }}>
+            {/* Development Notice */}
             <div
-              className="card-header"
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'space-between',
-                paddingBottom: 'var(--sp-3)',
-                borderBottom: '1px solid var(--c-border-subtle)',
+                gap: 'var(--sp-2)',
+                padding: 'var(--sp-2) var(--sp-3)',
+                background: 'var(--c-warning-subtle, #FFFBEB)',
+                border: '1px solid var(--c-warning-border, #FDE68A)',
+                borderRadius: 'var(--r-md)',
+                color: 'var(--c-warning-text, #92400E)',
+                fontSize: 11,
+                flexShrink: 0,
               }}
             >
-              <span className="card-title">
-                {activePreset.icon} Preview — {activePreset.label} ({activePreset.width}px)
-              </span>
-              {loading && (
-                <span style={{ fontSize: 11, color: 'var(--c-text-tertiary)' }}>Analyzing…</span>
-              )}
+              <span>⚠️</span>
+              <span><strong>Under Development:</strong> Generated reflow may require minor manual tuning.</span>
             </div>
 
-            {loading ? (
-              <div style={{ padding: 'var(--sp-4)', textAlign: 'center' }}>
-                <div style={{ fontSize: 12, color: 'var(--c-text-tertiary)' }}>
-                  Analyzing design for {activePreset.label} viewport…
-                </div>
+            {/* Viewport Selector */}
+            <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div className="card-header" style={{ padding: 'var(--sp-2) var(--sp-3)', flexShrink: 0 }}>
+                <span className="card-title" style={{ fontSize: 12 }}>Target Viewport</span>
               </div>
-            ) : preview ? (
-              <div
-                style={{
-                  padding: 'var(--sp-3)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 'var(--sp-3)',
-                }}
-              >
-                {/* Frame dimension comparison */}
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(3, 1fr)',
-                    gap: 'var(--sp-2)',
-                    fontSize: 11,
-                  }}
-                >
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span
-                      style={{
-                        color: 'var(--c-text-tertiary)',
-                        textTransform: 'uppercase',
-                        fontSize: 10,
-                        letterSpacing: '0.06em',
-                      }}
-                    >
-                      Original
-                    </span>
-                    <strong style={{ color: 'var(--c-text-primary)', fontSize: 12 }}>
-                      {preview.frameWidth} × {preview.frameHeight}px
-                    </strong>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span
-                      style={{
-                        color: 'var(--c-text-tertiary)',
-                        textTransform: 'uppercase',
-                        fontSize: 10,
-                        letterSpacing: '0.06em',
-                      }}
-                    >
-                      Target
-                    </span>
-                    <strong style={{ color: 'var(--c-accent)', fontSize: 12 }}>
-                      {preview.targetWidth} × {preview.targetHeight}px
-                    </strong>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span
-                      style={{
-                        color: 'var(--c-text-tertiary)',
-                        textTransform: 'uppercase',
-                        fontSize: 10,
-                        letterSpacing: '0.06em',
-                      }}
-                    >
-                      Changes
-                    </span>
-                    <strong
-                      style={{
-                        color:
-                          preview.predictedChanges.length > 0
-                            ? 'var(--c-warning, #f59e0b)'
-                            : 'var(--c-success, #10b981)',
-                        fontSize: 12,
-                      }}
-                    >
-                      {preview.predictedChanges.length}
-                    </strong>
-                  </div>
-                </div>
 
-                {/* Predicted Changes list */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: 'var(--c-text-secondary)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.06em',
-                      marginBottom: 2,
-                    }}
-                  >
-                    Layout Transformations
-                  </div>
-                  {preview.predictedChanges.map((change, i) => (
-                    <div
-                      key={i}
+              <div className="tool-scroll-list" style={{ flex: 1, padding: 'var(--sp-2)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {PRESETS.map(preset => {
+                  const isActive = selectedPreset === preset.id
+                  return (
+                    <button
+                      key={preset.id}
+                      onClick={() => handlePresetChange(preset.id)}
                       style={{
                         display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: 8,
-                        padding: '6px 8px',
-                        background: 'var(--c-bg-subtle, #12141a)',
-                        borderRadius: 6,
-                        fontSize: 11,
-                        color: 'var(--c-text-secondary)',
-                        lineHeight: 1.5,
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: 'var(--sp-2) var(--sp-3)',
+                        background: isActive ? 'rgba(37, 99, 235, 0.08)' : 'var(--c-surface)',
+                        border: `1.5px solid ${isActive ? 'var(--c-primary)' : 'var(--c-border-subtle)'}`,
+                        borderRadius: 'var(--r-md)',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.15s ease',
                       }}
                     >
-                      <span style={{ color: 'var(--c-accent)', flexShrink: 0, marginTop: 1 }}>
-                        →
-                      </span>
-                      <span>{change}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {preview.issuesResolved > 0 && (
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: 'var(--c-success, #10b981)',
-                      background: 'rgba(16,185,129,0.08)',
-                      border: '1px solid rgba(16,185,129,0.25)',
-                      borderRadius: 6,
-                      padding: '6px 10px',
-                    }}
-                  >
-                    ✓ This transformation will resolve {preview.issuesResolved} responsive{' '}
-                    {preview.issuesResolved === 1 ? 'issue' : 'issues'}
-                  </div>
-                )}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 16 }}>{preset.icon}</span>
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: isActive ? 'var(--c-primary)' : 'var(--c-text-primary)' }}>
+                            {preset.label}
+                          </div>
+                          <div style={{ fontSize: 10, color: 'var(--c-text-tertiary)' }}>
+                            {preset.width} × {preset.height}px
+                          </div>
+                        </div>
+                      </div>
+                      {isActive && (
+                        <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--c-primary)', background: 'rgba(37, 99, 235, 0.12)', padding: '2px 6px', borderRadius: 4 }}>
+                          SELECTED
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
               </div>
-            ) : null}
-          </div>
-        )}
 
-        {/* Primary CTA */}
-        {hasFrame && (
-          <button
-            className="btn btn-primary"
-            style={{
-              width: '100%',
-              padding: 'var(--sp-3)',
-              fontSize: 14,
-              fontWeight: 600,
-              opacity: applying ? 0.7 : 1,
-            }}
-            onClick={handleMakeResponsive}
-            disabled={applying || loading}
-          >
-            {applying
-              ? '⏳ Creating Responsive Frame…'
-              : `${activePreset.icon} Make Responsive → ${activePreset.label}`}
-          </button>
-        )}
-
-        {/* Result confirmation */}
-        {result && (
-          <div
-            className="card"
-            style={{
-              overflow: 'hidden',
-              border: '1px solid rgba(16, 185, 129, 0.35)',
-              background: 'rgba(16, 185, 129, 0.04)',
-            }}
-          >
-            <div
-              className="card-header"
-              style={{
-                paddingBottom: 'var(--sp-2)',
-                borderBottom: '1px solid rgba(16,185,129,0.2)',
-              }}
-            >
-              <span
-                style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-success, #10b981)' }}
-              >
-                ✓ Responsive Frame Created
-              </span>
+              {/* Pinned Primary CTA */}
+              <div style={{ padding: 'var(--sp-2) var(--sp-3)', borderTop: '1px solid var(--c-border-subtle)', background: 'var(--c-surface-subtle)', flexShrink: 0 }}>
+                <button
+                  className="btn btn-primary"
+                  style={{
+                    width: '100%',
+                    height: 36,
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                  onClick={handleMakeResponsive}
+                  disabled={!hasFrame || applying || loading}
+                >
+                  {applying
+                    ? '⏳ Creating Frame…'
+                    : `${activePreset.icon} Make Responsive → ${activePreset.label}`}
+                </button>
+              </div>
             </div>
+          </div>
 
-            <div
-              style={{
-                padding: 'var(--sp-3)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 'var(--sp-2)',
-              }}
-            >
-              <div style={{ fontSize: 12, color: 'var(--c-text-primary)' }}>
-                <strong>{result.newFrameName}</strong> was placed next to your original frame.
-              </div>
-
+          {/* Right Pane: Transformation Preview & Log */}
+          <div className="tool-pane-right" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div
+                className="card-header"
                 style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: 'var(--sp-2)',
-                  fontSize: 11,
-                  color: 'var(--c-text-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: 'var(--sp-2) var(--sp-3)',
+                  borderBottom: '1px solid var(--c-border-subtle)',
+                  flexShrink: 0,
                 }}
               >
-                <div>
-                  Target:{' '}
-                  <strong>
-                    {result.targetViewport} ({result.targetWidth}px)
-                  </strong>
-                </div>
-                <div>
-                  Adjustments:{' '}
-                  <strong style={{ color: 'var(--c-success, #10b981)' }}>
-                    {result.mutationsApplied}
-                  </strong>
-                </div>
+                <span className="card-title" style={{ fontSize: 12 }}>
+                  {activePreset.icon} Layout Reflow Preview — {activePreset.label} ({activePreset.width}px)
+                </span>
+                {loading && (
+                  <span style={{ fontSize: 11, color: 'var(--c-text-tertiary)' }}>Analyzing…</span>
+                )}
               </div>
 
-              {result.changeLog.length > 0 && (
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 3,
-                    maxHeight: 180,
-                    overflowY: 'auto',
-                  }}
-                >
-                  {result.changeLog.map((entry, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        fontSize: 11,
-                        color: 'var(--c-text-tertiary)',
-                        background: 'var(--c-bg-subtle)',
-                        borderRadius: 4,
-                        padding: '4px 8px',
-                      }}
-                    >
-                      ✓ {entry}
+              <div className="tool-scroll-list" style={{ flex: 1, padding: 'var(--sp-3)' }}>
+                {loading ? (
+                  <div style={{ padding: 'var(--sp-8)', textAlign: 'center', color: 'var(--c-text-tertiary)', fontSize: 12 }}>
+                    Analyzing frame structure for {activePreset.label}…
+                  </div>
+                ) : !hasFrame ? (
+                  <div style={{ padding: 'var(--sp-8)', textAlign: 'center', color: 'var(--c-text-tertiary)', fontSize: 12 }}>
+                    Select a frame on Figma canvas to preview responsive layout transformations.
+                  </div>
+                ) : preview ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+                    {/* Dimension comparison */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--sp-2)', background: 'var(--c-surface-subtle)', padding: 'var(--sp-2) var(--sp-3)', borderRadius: 'var(--r-md)' }}>
+                      <div>
+                        <div style={{ fontSize: 9, color: 'var(--c-text-tertiary)', textTransform: 'uppercase' }}>Original</div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-text-primary)' }}>
+                          {preview.frameWidth} × {preview.frameHeight}px
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 9, color: 'var(--c-text-tertiary)', textTransform: 'uppercase' }}>Target</div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-primary)' }}>
+                          {preview.targetWidth} × {preview.targetHeight}px
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 9, color: 'var(--c-text-tertiary)', textTransform: 'uppercase' }}>Adjustments</div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-text-primary)' }}>
+                          {preview.predictedChanges.length}
+                        </div>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              )}
 
-              <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)', marginTop: 4 }}>
-                Your original frame was not modified.
+                    {/* Predicted changes */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--c-text-secondary)', textTransform: 'uppercase' }}>
+                        Reflow Actions
+                      </span>
+                      {preview.predictedChanges.map((change, i) => (
+                        <div
+                          key={i}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: 6,
+                            padding: '6px 10px',
+                            background: 'var(--c-surface)',
+                            border: '1px solid var(--c-border-subtle)',
+                            borderRadius: 'var(--r-sm)',
+                            fontSize: 11,
+                            color: 'var(--c-text-secondary)',
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          <span style={{ color: 'var(--c-primary)', fontWeight: 700 }}>→</span>
+                          <span>{change}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Result card if created */}
+                    {result && (
+                      <div style={{ marginTop: 'var(--sp-2)', padding: 'var(--sp-3)', background: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: 'var(--r-md)' }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-success)' }}>
+                          ✓ Created: {result.newFrameName} ({result.mutationsApplied} changes applied)
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--c-text-secondary)', marginTop: 2 }}>
+                          Placed next to original frame. Original frame preserved.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   )

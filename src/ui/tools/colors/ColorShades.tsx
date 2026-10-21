@@ -108,55 +108,55 @@ export const ColorShades: React.FC<Props> = ({ selection, onSuccess, onError }) 
         </p>
       </div>
 
-      <div className="main-scroll">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)', maxWidth: 680 }}>
+      <div className="tool-split-view">
+        {/* Left Column: Controls & Pinned CTA */}
+        <div className="tool-pane-left" style={{ width: 310 }}>
           {/* Controls Card */}
           <div className="card">
-            <div className="card-header">
-              <span className="card-title">Base Color & Tuning</span>
+            <div className="card-header" style={{ padding: 'var(--sp-2) var(--sp-4) 0' }}>
+              <span className="card-title" style={{ fontSize: 12 }}>Base Color & Tuning</span>
             </div>
-            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-3)' }}>
-                <div>
-                  <label className="label">Base Hex</label>
-                  <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
-                    <input
-                      type="color"
-                      value={validHex}
-                      onChange={e => setInputHex(e.target.value.toUpperCase())}
-                      style={{
-                        width: 36,
-                        height: 34,
-                        borderRadius: 'var(--r-md)',
-                        border: '1px solid var(--c-border)',
-                        padding: 0,
-                        cursor: 'pointer',
-                        background: 'transparent',
-                      }}
-                    />
-                    <input
-                      className="input"
-                      style={{ fontFamily: 'var(--font-mono)' }}
-                      value={inputHex}
-                      onChange={e => setInputHex(e.target.value)}
-                      placeholder="#2563EB"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="label">Scale Group Name</label>
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)', padding: 'var(--sp-3) var(--sp-4)' }}>
+              <div>
+                <label className="label" style={{ fontSize: 11 }}>Base Hex</label>
+                <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>
+                  <input
+                    type="color"
+                    value={validHex}
+                    onChange={e => setInputHex(e.target.value.toUpperCase())}
+                    style={{
+                      width: 36,
+                      height: 32,
+                      borderRadius: 'var(--r-md)',
+                      border: '1px solid var(--c-border)',
+                      padding: 0,
+                      cursor: 'pointer',
+                      background: 'transparent',
+                    }}
+                  />
                   <input
                     className="input"
-                    value={scaleName}
-                    onChange={e => setScaleName(e.target.value)}
-                    placeholder="e.g. Primary, Slate"
+                    style={{ fontFamily: 'var(--font-mono)', height: 32 }}
+                    value={inputHex}
+                    onChange={e => setInputHex(e.target.value)}
+                    placeholder="#2563EB"
                   />
                 </div>
               </div>
 
+              <div>
+                <label className="label" style={{ fontSize: 11 }}>Scale Group Name</label>
+                <input
+                  className="input"
+                  style={{ height: 32 }}
+                  value={scaleName}
+                  onChange={e => setScaleName(e.target.value)}
+                  placeholder="e.g. Primary, Slate"
+                />
+              </div>
+
               {/* Sliders */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-4)', marginTop: 'var(--sp-2)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)', marginTop: 2 }}>
                 <div className="slider-wrap">
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--fs-xs)', color: 'var(--c-text-secondary)' }}>
                     <span>Lightness Bias</span>
@@ -191,15 +191,26 @@ export const ColorShades: React.FC<Props> = ({ selection, onSuccess, onError }) 
             </div>
           </div>
 
-          {/* Generated Shades Scale */}
-          <div className="card">
-            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          {/* Pinned Primary CTA Card */}
+          <div className="card" style={{ padding: 'var(--sp-3)', background: 'var(--c-surface)' }}>
+            <button
+              className="btn btn-primary btn-full"
+              onClick={handleCreateStyles}
+              id="color-shades-create-styles-btn"
+            >
+              Create Color Styles in Figma
+            </button>
+          </div>
+        </div>
+
+        {/* Right Column: Generated Shades List */}
+        <div className="tool-pane-right">
+          <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <div className="card-header" style={{ padding: 'var(--sp-3) var(--sp-4)', borderBottom: '1px solid var(--c-border-subtle)' }}>
               <span className="card-title">Generated Shades ({shades.length} Steps)</span>
-              <button className="btn btn-primary btn-sm" onClick={handleCreateStyles}>
-                Create Color Styles in Figma
-              </button>
             </div>
-            <div className="card-body" style={{ padding: 0 }}>
+
+            <div className="tool-scroll-list">
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {shades.map(shade => {
                   const useWhite = shouldUseWhiteText(shade.hex)
@@ -210,7 +221,7 @@ export const ColorShades: React.FC<Props> = ({ selection, onSuccess, onError }) 
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        padding: 'var(--sp-2) var(--sp-4)',
+                        padding: '6px var(--sp-4)',
                         borderBottom: '1px solid var(--c-border-subtle)',
                         background: 'var(--c-surface)',
                       }}
@@ -218,8 +229,8 @@ export const ColorShades: React.FC<Props> = ({ selection, onSuccess, onError }) 
                       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
                         <div
                           style={{
-                            width: 32,
-                            height: 32,
+                            width: 28,
+                            height: 28,
                             borderRadius: 'var(--r-md)',
                             background: shade.hex,
                             border: '1px solid rgba(0,0,0,0.1)',
@@ -234,10 +245,10 @@ export const ColorShades: React.FC<Props> = ({ selection, onSuccess, onError }) 
                           {shade.name}
                         </div>
                         <div>
-                          <div style={{ fontWeight: 'var(--fw-semibold)', fontSize: 'var(--fs-sm)', color: 'var(--c-text-primary)' }}>
+                          <div style={{ fontWeight: 'var(--fw-semibold)', fontSize: 12, color: 'var(--c-text-primary)' }}>
                             {scaleName ? `${scaleName} / ${shade.name}` : shade.name}
                           </div>
-                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-xs)', color: 'var(--c-text-secondary)' }}>
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--c-text-secondary)' }}>
                             {shade.hex} • L: {shade.lightness}%
                           </div>
                         </div>
@@ -246,6 +257,7 @@ export const ColorShades: React.FC<Props> = ({ selection, onSuccess, onError }) 
                       <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
                         <button
                           className="btn btn-secondary btn-sm"
+                          style={{ height: 26, padding: '0 8px', fontSize: 11 }}
                           onClick={() => handleCopy(shade.hex)}
                           title="Copy Hex"
                         >
@@ -253,6 +265,7 @@ export const ColorShades: React.FC<Props> = ({ selection, onSuccess, onError }) 
                         </button>
                         <button
                           className="btn btn-secondary btn-sm"
+                          style={{ height: 26, padding: '0 8px', fontSize: 11 }}
                           onClick={() => handleApplyToSelection(shade.hex)}
                           title="Apply to current selection"
                         >

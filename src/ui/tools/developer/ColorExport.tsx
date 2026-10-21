@@ -121,159 +121,160 @@ export const ColorExport: React.FC<Props> = ({ selection, onSuccess, onError }) 
         </p>
       </div>
 
-      <div className="tool-body">
-        <SelectionBanner
-          selection={selection}
-          selectionHint="Select frames or layers to extract colors, or switch to Current Page."
-        />
+      <div className="tool-body" style={{ flex: 1, overflow: 'hidden', padding: 0 }}>
+        <div className="tool-split-view" style={{ height: '100%' }}>
+          {/* Left Pane: Controls, Swatches & Pinned Copy CTA */}
+          <div className="tool-pane-left" style={{ width: 310, display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+            <SelectionBanner
+              selection={selection}
+              selectionHint="Select frames or layers, or switch to Current Page."
+            />
 
-        {/* Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--sp-3)' }}>
-          <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
-            <button
-              className={`btn btn-sm ${scope === 'selection' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => {
-                setScope('selection')
-                requestColors('selection')
-              }}
-            >
-              Selected Layers
-            </button>
-            <button
-              className={`btn btn-sm ${scope === 'page' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => {
-                setScope('page')
-                requestColors('page')
-              }}
-            >
-              Current Page
-            </button>
-          </div>
-
-          <div style={{ display: 'flex', gap: 'var(--sp-1)' }}>
-            {(['hex', 'css', 'scss', 'json', 'swift', 'android'] as ExportFormat[]).map(fmt => (
-              <button
-                key={fmt}
-                className={`btn btn-sm ${format === fmt ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setFormat(fmt)}
-                style={{ textTransform: 'uppercase', fontSize: 10 }}
-              >
-                {fmt}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Stats */}
-        {data && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--sp-3)' }}>
-            <div className="card" style={{ padding: 'var(--sp-3)' }}>
-              <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)' }}>Unique Colors</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-text-primary)', marginTop: 2 }}>
-                {data.totalUnique}
-              </div>
-            </div>
-            <div className="card" style={{ padding: 'var(--sp-3)' }}>
-              <div style={{ fontSize: 11, color: 'var(--c-text-tertiary)' }}>Total Color Usages</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c-accent)', marginTop: 2 }}>
-                {data.totalUsages}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Color preview grid / code preview */}
-        {loading ? (
-          <div className="empty-state">
-            <div style={{ fontSize: 13, color: 'var(--c-text-tertiary)' }}>Extracting colors…</div>
-          </div>
-        ) : colors.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-state-title">No colors found</div>
-            <div className="empty-state-body">
-              Select layers with fills, strokes, or text to extract colors.
-            </div>
-          </div>
-        ) : (
-          <>
-            {/* Color Swatch Strip */}
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
-                gap: 'var(--sp-2)',
-              }}
-            >
-              {colors.map((c, idx) => (
-                <div
-                  key={`${c.hex}-${idx}`}
-                  style={{
-                    background: 'var(--c-surface)',
-                    border: '1px solid var(--c-border)',
-                    borderRadius: 'var(--r-md)',
-                    padding: 'var(--sp-2)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 'var(--sp-2)',
-                    cursor: 'pointer',
-                    transition: 'transform 100ms ease, box-shadow 100ms ease',
-                  }}
-                  onClick={() => handleCopySingle(c.hex)}
-                  title="Click to copy hex"
-                >
-                  <div
-                    style={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: 'var(--r-sm)',
-                      background: c.hex,
-                      border: '1px solid rgba(0,0,0,0.1)',
-                      flexShrink: 0,
-                    }}
-                  />
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-mono)', color: 'var(--c-text-primary)' }}>
-                      {c.hex}
-                    </div>
-                    <div style={{ fontSize: 9, color: 'var(--c-text-tertiary)' }}>
-                      {c.count} use{c.count !== 1 ? 's' : ''}
-                    </div>
+            {/* Scope & Format Picker Card */}
+            <div className="card" style={{ padding: 'var(--sp-2) var(--sp-3)', flexShrink: 0 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--c-text-secondary)' }}>Scope:</span>
+                  <div style={{ display: 'inline-flex', background: 'var(--c-bg)', padding: 2, borderRadius: 'var(--r-md)', border: '1px solid var(--c-border)' }}>
+                    <button
+                      className={`btn btn-sm ${scope === 'selection' ? 'btn-primary' : 'btn-ghost'}`}
+                      onClick={() => {
+                        setScope('selection')
+                        requestColors('selection')
+                      }}
+                      style={{ height: 24, fontSize: 11, padding: '0 8px' }}
+                    >
+                      Selection
+                    </button>
+                    <button
+                      className={`btn btn-sm ${scope === 'page' ? 'btn-primary' : 'btn-ghost'}`}
+                      onClick={() => {
+                        setScope('page')
+                        requestColors('page')
+                      }}
+                      style={{ height: 24, fontSize: 11, padding: '0 8px' }}
+                    >
+                      Page
+                    </button>
                   </div>
                 </div>
-              ))}
+
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                  {(['hex', 'css', 'scss', 'json', 'swift', 'android'] as ExportFormat[]).map(fmt => (
+                    <button
+                      key={fmt}
+                      className={`btn btn-sm ${format === fmt ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => setFormat(fmt)}
+                      style={{ textTransform: 'uppercase', fontSize: 10, height: 24, padding: '0 6px' }}
+                    >
+                      {fmt}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
-            {/* Code Output Card */}
-            <div className="card" style={{ overflow: 'hidden' }}>
+            {/* Swatches List */}
+            <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div className="card-header" style={{ padding: 'var(--sp-2) var(--sp-3)', flexShrink: 0 }}>
+                <span className="card-title" style={{ fontSize: 12 }}>
+                  {colors.length} Swatches ({data?.totalUsages ?? 0} uses)
+                </span>
+              </div>
+
+              <div className="tool-scroll-list" style={{ flex: 1, padding: 'var(--sp-2)' }}>
+                {loading ? (
+                  <div style={{ padding: 'var(--sp-4)', textAlign: 'center', color: 'var(--c-text-tertiary)', fontSize: 12 }}>
+                    Extracting colors…
+                  </div>
+                ) : colors.length === 0 ? (
+                  <div style={{ padding: 'var(--sp-4)', textAlign: 'center', color: 'var(--c-text-tertiary)', fontSize: 12 }}>
+                    No colors found in {scope}.
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
+                    {colors.map((c, idx) => (
+                      <div
+                        key={`${c.hex}-${idx}`}
+                        style={{
+                          background: 'var(--c-surface)',
+                          border: '1px solid var(--c-border)',
+                          borderRadius: 'var(--r-sm)',
+                          padding: '4px 6px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => handleCopySingle(c.hex)}
+                        title="Click to copy hex"
+                      >
+                        <div
+                          style={{
+                            width: 18,
+                            height: 18,
+                            borderRadius: 'var(--r-sm)',
+                            background: c.hex,
+                            border: '1px solid rgba(0,0,0,0.1)',
+                            flexShrink: 0,
+                          }}
+                        />
+                        <div style={{ minWidth: 0, overflow: 'hidden' }}>
+                          <div style={{ fontSize: 10, fontWeight: 600, fontFamily: 'var(--font-mono)', color: 'var(--c-text-primary)' }}>
+                            {c.hex}
+                          </div>
+                          <div style={{ fontSize: 9, color: 'var(--c-text-tertiary)' }}>
+                            {c.count}×
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Pinned Action Button */}
+              {colors.length > 0 && (
+                <div style={{ padding: 'var(--sp-2) var(--sp-3)', borderTop: '1px solid var(--c-border-subtle)', background: 'var(--c-surface-subtle)', flexShrink: 0 }}>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={handleCopy}
+                    id="copy-color-export-btn"
+                    style={{ width: '100%', height: 32 }}
+                  >
+                    {copied ? 'Copied to Clipboard!' : `Copy All (${format.toUpperCase()})`}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Pane: Code Output Preview */}
+          <div className="tool-pane-right" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div
                 className="card-header"
                 style={{
-                  paddingBottom: 'var(--sp-3)',
+                  padding: 'var(--sp-2) var(--sp-3)',
                   borderBottom: '1px solid var(--c-border-subtle)',
+                  flexShrink: 0,
                 }}
               >
-                <div className="card-title">
-                  Export — {format.toUpperCase()} ({colors.length} colors)
+                <div className="card-title" style={{ fontSize: 12 }}>
+                  Generated {format.toUpperCase()} Output
                 </div>
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={handleCopy}
-                  id="copy-color-export-btn"
-                >
-                  {copied ? 'Copied!' : 'Copy All'}
-                </button>
               </div>
 
               <pre
                 style={{
                   margin: 0,
-                  padding: 'var(--sp-4)',
+                  padding: 'var(--sp-3)',
                   background: 'var(--c-surface-subtle)',
                   fontFamily: 'var(--font-mono)',
                   fontSize: 12,
                   lineHeight: 1.6,
                   color: 'var(--c-text-primary)',
-                  maxHeight: 220,
+                  flex: 1,
                   overflow: 'auto',
                   userSelect: 'all',
                 }}
@@ -281,8 +282,8 @@ export const ColorExport: React.FC<Props> = ({ selection, onSuccess, onError }) 
                 <code>{generateExportText()}</code>
               </pre>
             </div>
-          </>
-        )}
+          </div>
+        </div>
       </div>
     </div>
   )

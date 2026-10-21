@@ -56,70 +56,41 @@ export const LineHeightCalculator: React.FC<Props> = ({ selection, onSuccess, on
         </p>
       </div>
 
-      <div className="main-scroll">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)', maxWidth: 660 }}>
+      <div className="tool-split-view">
+        {/* Left Column: Controls & Presets & Pinned CTA */}
+        <div className="tool-pane-left" style={{ width: 320 }}>
           {/* Controls Card */}
           <div className="card">
-            <div className="card-header">
-              <span className="card-title">Font Size & Ratio Settings</span>
+            <div className="card-header" style={{ padding: 'var(--sp-2) var(--sp-4) 0' }}>
+              <span className="card-title" style={{ fontSize: 12 }}>Settings</span>
             </div>
-            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-3)' }}>
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)', padding: 'var(--sp-3) var(--sp-4)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-2)' }}>
                 <div>
-                  <label className="label">Font Size (px)</label>
+                  <label className="label" style={{ fontSize: 11 }}>Font Size (px)</label>
                   <input
                     type="number"
                     className="input"
+                    style={{ height: 30, fontSize: 12 }}
                     value={fontSize}
                     onChange={e => setFontSize(Math.max(6, parseInt(e.target.value) || 16))}
                   />
                 </div>
 
                 <div>
-                  <label className="label">Baseline Snap</label>
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <label className="label" style={{ fontSize: 11 }}>Baseline Snap</label>
+                  <div style={{ display: 'flex', gap: 4 }}>
                     {[null, 4, 8].map((g, idx) => (
                       <button
                         key={idx}
                         className={`btn btn-sm ${snapToGrid === g ? 'btn-primary' : 'btn-secondary'}`}
-                        style={{ flex: 1 }}
+                        style={{ flex: 1, height: 30, padding: 0, fontSize: 10 }}
                         onClick={() => setSnapToGrid(g)}
                       >
-                        {g ? `${g}pt Grid` : 'None'}
+                        {g ? `${g}pt` : 'None'}
                       </button>
                     ))}
                   </div>
-                </div>
-              </div>
-
-              {/* Ratio Presets */}
-              <div style={{ marginTop: 'var(--sp-2)' }}>
-                <label className="label">Ratio Presets</label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {RATIO_PRESETS.map(preset => (
-                    <div
-                      key={preset.label}
-                      onClick={() => setRatio(preset.ratio)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: 'var(--sp-2) var(--sp-3)',
-                        borderRadius: 'var(--r-md)',
-                        border: '1px solid',
-                        borderColor: Math.abs(ratio - preset.ratio) < 0.01 ? 'var(--c-accent)' : 'var(--c-border)',
-                        background: Math.abs(ratio - preset.ratio) < 0.01 ? 'rgba(37, 99, 235, 0.05)' : 'var(--c-surface)',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 'var(--fw-medium)', color: 'var(--c-text-primary)' }}>
-                        {preset.label}
-                      </span>
-                      <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--c-text-secondary)' }}>
-                        {preset.desc}
-                      </span>
-                    </div>
-                  ))}
                 </div>
               </div>
 
@@ -129,34 +100,35 @@ export const LineHeightCalculator: React.FC<Props> = ({ selection, onSuccess, on
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  padding: 'var(--sp-3)',
+                  padding: 'var(--sp-2) var(--sp-3)',
                   background: 'var(--c-bg)',
                   borderRadius: 'var(--r-md)',
                   border: '1px solid var(--c-border)',
-                  marginTop: 'var(--sp-2)',
                 }}
               >
                 <div>
-                  <div style={{ fontSize: 11, color: 'var(--c-text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                    Target Line Height
+                  <div style={{ fontSize: 10, color: 'var(--c-text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    Calculated Height
                   </div>
-                  <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--c-text-primary)', fontFamily: 'var(--font-mono)' }}>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--c-text-primary)', fontFamily: 'var(--font-mono)', lineHeight: 1.1 }}>
                     {calculatedLh}px{' '}
-                    <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--c-text-secondary)' }}>
+                    <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--c-text-secondary)' }}>
                       ({(calculatedLh / fontSize).toFixed(2)}×)
                     </span>
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
+                <div style={{ display: 'flex', gap: 4 }}>
                   <button
                     className={`btn btn-sm ${unit === 'PIXELS' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ height: 24, padding: '0 6px', fontSize: 10 }}
                     onClick={() => setUnit('PIXELS')}
                   >
-                    Pixels
+                    px
                   </button>
                   <button
                     className={`btn btn-sm ${unit === 'PERCENT' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ height: 24, padding: '0 6px', fontSize: 10 }}
                     onClick={() => setUnit('PERCENT')}
                   >
                     %
@@ -166,33 +138,79 @@ export const LineHeightCalculator: React.FC<Props> = ({ selection, onSuccess, on
             </div>
           </div>
 
-          {/* Typography Sample Card */}
-          <div className="card">
-            <div className="card-header">
+          {/* Ratio Presets */}
+          <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <div className="card-header" style={{ padding: 'var(--sp-2) var(--sp-4) 0' }}>
+              <span className="card-title" style={{ fontSize: 12 }}>Ratio Presets</span>
+            </div>
+            <div className="tool-scroll-list" style={{ padding: 'var(--sp-2) var(--sp-3)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {RATIO_PRESETS.map(preset => (
+                <div
+                  key={preset.label}
+                  onClick={() => setRatio(preset.ratio)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '6px 8px',
+                    borderRadius: 'var(--r-md)',
+                    border: '1px solid',
+                    borderColor: Math.abs(ratio - preset.ratio) < 0.01 ? 'var(--c-accent)' : 'var(--c-border)',
+                    background: Math.abs(ratio - preset.ratio) < 0.01 ? 'rgba(37, 99, 235, 0.06)' : 'var(--c-surface)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <span style={{ fontSize: 11, fontWeight: 'var(--fw-medium)', color: 'var(--c-text-primary)' }}>
+                    {preset.label}
+                  </span>
+                  <span style={{ fontSize: 10, color: 'var(--c-text-secondary)' }}>
+                    {preset.desc}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Action Card */}
+          <div className="card" style={{ padding: 'var(--sp-3)' }}>
+            <button className="btn btn-primary btn-full" onClick={handleApply}>
+              Apply Line Height ({calculatedLh}px)
+            </button>
+          </div>
+        </div>
+
+        {/* Right Column: Live Sample */}
+        <div className="tool-pane-right">
+          <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <div className="card-header" style={{ padding: 'var(--sp-3) var(--sp-4)', borderBottom: '1px solid var(--c-border-subtle)' }}>
               <span className="card-title">Live Typography Sample</span>
             </div>
-            <div className="card-body">
+            <div className="card-body" style={{ flex: 1, overflowY: 'auto', padding: 'var(--sp-5)' }}>
               <p
                 style={{
                   fontSize,
                   lineHeight: `${calculatedLh}px`,
                   color: 'var(--c-text-primary)',
                   margin: 0,
-                  transition: 'line-height 150ms ease',
+                  transition: 'line-height 150ms ease, font-size 150ms ease',
                 }}
               >
                 Typography thrives on vertical rhythm. Adequate line spacing reduces visual clutter,
                 guides the reader's eye seamlessly across paragraphs, and delivers an authoritative,
                 refined user experience throughout your interfaces.
               </p>
+              <p
+                style={{
+                  fontSize: Math.round(fontSize * 0.85),
+                  lineHeight: `${calculatedLh}px`,
+                  color: 'var(--c-text-secondary)',
+                  marginTop: 'var(--sp-4)',
+                  transition: 'line-height 150ms ease',
+                }}
+              >
+                Subtext and secondary annotations maintain the same vertical baseline grid, ensuring harmonious spacing across multi-column dashboard views and responsive device layouts.
+              </p>
             </div>
-          </div>
-
-          {/* Action */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button className="btn btn-primary" onClick={handleApply} style={{ minWidth: 200 }}>
-              Apply Line Height ({calculatedLh}px)
-            </button>
           </div>
         </div>
       </div>

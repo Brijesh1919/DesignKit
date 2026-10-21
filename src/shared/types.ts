@@ -256,6 +256,13 @@ export interface ApplyImageCropPayload {
   ratioWidth: number;
   ratioHeight: number;
   mode: 'FILL' | 'FIT';
+  croppedBytes?: number[];
+  cropRect?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
 }
 
 
