@@ -20,23 +20,32 @@ function rangesOverlap(a: TextIssue, b: TextIssue): boolean {
   return Math.max(a.start, b.start) < Math.min(a.end, b.end)
 }
 
+import { OnnxTextChecker } from './OnnxTextChecker'
+
 /**
  * Executes checkers over a collection of text nodes:
- * 1. Queries LanguageTool API for high-precision semantic spelling and grammar detection.
- * 2. If LanguageTool is unavailable, offline, or times out, automatically falls back to
- *    the local SpellingChecker, GrammarChecker, and TypographyChecker.
- * 3. Always includes local SpacingChecker for Figma-specific layout whitespace rules.
- * 4. Merges and deduplicates issues cleanly.
+ * 1. Always runs all local checkers first (Spacing, Spelling, Grammar, Typography) — 0ms, 100% offline.
+ * 2. If enableAI is true, runs the local ONNX neural grammar engine to detect deeper contextual anomalies.
+ * 3. Queries LanguageTool (with cache) if available for additional verification.
+ * 4. Merges and deduplicates issues cleanly without overlap.
  */
 export async function runAllCheckers(
   nodes: CollectedTextNode[],
-  fallbackCheckers: TextChecker[]
+  fallbackCheckers: TextChecker[],
+  enableAI: boolean = false,
+  onProgress?: (msg: string) => void
 ): Promise<TextIssue[]> {
   const allIssues: TextIssue[] = []
 
+  let processedCount = 0
   for (const node of nodes) {
     if (!node.characters || !node.characters.trim()) {
       continue
+    }
+
+    processedCount++
+    if (enableAI && onProgress) {
+      onProgress(`Analyzing layer ${processedCount}/${nodes.length} with Local ONNX…`)
     }
 
     const nodeIssues: TextIssue[] = []
@@ -57,7 +66,22 @@ export async function runAllCheckers(
       }
     }
 
-    // 2. Query LanguageTool (with cache) for any additional semantic / contextual issues
+    // 2. Run Local ONNX Neural Checker if enabled
+    if (enableAI) {
+      try {
+        const aiIssues = await OnnxTextChecker.check(node)
+        for (const aiIssue of aiIssues) {
+          const hasOverlap = nodeIssues.some(existing => rangesOverlap(existing, aiIssue))
+          if (!hasOverlap) {
+            nodeIssues.push(aiIssue)
+          }
+        }
+      } catch (err) {
+        console.warn(`[DesignKit TextQA] ONNX AI Checker error:`, err)
+      }
+    }
+
+    // 3. Query LanguageTool (with cache) for any additional semantic / contextual issues
     try {
       const ltIssues = await checkLanguageTool(node)
       if (ltIssues && ltIssues.length > 0) {

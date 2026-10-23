@@ -66,6 +66,12 @@ const EyeIcon = () => (
   </svg>
 )
 
+const SparklesIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 3l1.912 5.886a2 2 0 001.202 1.202L21 12l-5.886 1.912a2 2 0 00-1.202 1.202L12 21l-1.912-5.886a2 2 0 00-1.202-1.202L3 12l5.886-1.912a2 2 0 001.202-1.202L12 3z" />
+  </svg>
+)
+
 export const TextQA: React.FC<Props> = ({ selection, onSuccess, onError }) => {
   const [scanning, setScanning] = useState(false)
   const [hasScanned, setHasScanned] = useState(false)
@@ -75,6 +81,8 @@ export const TextQA: React.FC<Props> = ({ selection, onSuccess, onError }) => {
   const [reviewMode, setReviewMode] = useState(false)
   const [focusedIssueId, setFocusedIssueId] = useState<string | null>(null)
   const [issueStateTrigger, setIssueStateTrigger] = useState(0)
+  const [aiMode, setAiMode] = useState(false)
+  const [aiProgress, setAiProgress] = useState<string | null>(null)
 
   // Issue manager instance
   const issueManager = useMemo(() => new IssueManager([]), [])
@@ -85,9 +93,21 @@ export const TextQA: React.FC<Props> = ({ selection, onSuccess, onError }) => {
     []
   )
 
-  // Request text node collection from Figma plugin sandbox
+  // Standard Fast Scan
   const handleScan = useCallback(() => {
     if (!selection || selection.count === 0) return
+    setAiMode(false)
+    setAiProgress(null)
+    setScanning(true)
+    setHasScanned(false)
+    sendToPlugin({ type: 'COLLECT_TEXT_NODES' })
+  }, [selection])
+
+  // Local ONNX Deep AI Scan
+  const handleDeepAiScan = useCallback(() => {
+    if (!selection || selection.count === 0) return
+    setAiMode(true)
+    setAiProgress('Initializing Local ONNX Engine…')
     setScanning(true)
     setHasScanned(false)
     sendToPlugin({ type: 'COLLECT_TEXT_NODES' })
@@ -114,9 +134,13 @@ export const TextQA: React.FC<Props> = ({ selection, onSuccess, onError }) => {
           }
 
           try {
-            const detectedIssues = await runAllCheckers(nodes, checkers)
+            const detectedIssues = await runAllCheckers(nodes, checkers, aiMode, (status) => setAiProgress(status))
             issueManager.setIssues(detectedIssues)
             setIssueStateTrigger(v => v + 1)
+
+            if (aiMode) {
+              onSuccess(`✨ AI Check complete: analyzed ${nodes.length} text layer${nodes.length !== 1 ? 's' : ''} with local ONNX engine`)
+            }
 
             // Update Review Mode highlights if currently ON
             if (reviewMode) {
@@ -134,6 +158,7 @@ export const TextQA: React.FC<Props> = ({ selection, onSuccess, onError }) => {
           } finally {
             setScanning(false)
             setHasScanned(true)
+            setAiProgress(null)
           }
           break
         }
@@ -398,7 +423,29 @@ export const TextQA: React.FC<Props> = ({ selection, onSuccess, onError }) => {
               style={{ height: 28, fontSize: 12 }}
             >
               <ScanIcon />
-              {scanning ? 'Scanning…' : hasScanned ? 'Re-scan' : 'Scan Selection'}
+              {scanning && !aiMode ? 'Scanning…' : hasScanned ? 'Re-scan' : 'Scan Selection'}
+            </button>
+
+            <button
+              className="btn btn-sm"
+              onClick={handleDeepAiScan}
+              disabled={!hasSelection || scanning}
+              id="text-qa-ai-scan-btn"
+              style={{
+                height: 28,
+                fontSize: 12,
+                fontWeight: 600,
+                background: aiMode ? 'linear-gradient(135deg, #2563EB 0%, #7C3AED 100%)' : 'linear-gradient(135deg, rgba(37,99,235,0.08), rgba(124,58,237,0.14))',
+                color: aiMode ? '#fff' : '#7C3AED',
+                border: aiMode ? 'none' : '1px solid rgba(124,58,237,0.25)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+              }}
+              title="Run local ONNX neural model to catch deeper contextual grammar & phrasing errors"
+            >
+              <SparklesIcon />
+              {scanning && aiMode ? (aiProgress || 'AI Checking…') : 'Deep AI Check'}
             </button>
 
             {hasScanned && (
@@ -502,10 +549,12 @@ export const TextQA: React.FC<Props> = ({ selection, onSuccess, onError }) => {
               }}
             />
             <div className="empty-state-title" style={{ marginTop: 'var(--sp-2)' }}>
-              Scanning text layers…
+              {aiMode ? (aiProgress || 'Analyzing text with Local ONNX…') : 'Scanning text layers…'}
             </div>
             <div className="empty-state-body">
-              Traversing selected hierarchy and checking spelling, grammar, and spacing.
+              {aiMode
+                ? 'Evaluating linguistic syntax, prepositions, and contextual phrasing using on-device neural model.'
+                : 'Traversing selected hierarchy and checking spelling, grammar, and spacing.'}
             </div>
           </div>
         )}
@@ -602,6 +651,22 @@ export const TextQA: React.FC<Props> = ({ selection, onSuccess, onError }) => {
                             <span style={{ width: 6, height: 6, borderRadius: '50%', background: badge.dot }} />
                             {badge.label}
                           </span>
+
+                          {issue.message.startsWith('✨ AI') && (
+                            <span
+                              style={{
+                                fontSize: 10,
+                                fontWeight: 700,
+                                padding: '1px 6px',
+                                borderRadius: 'var(--r-full)',
+                                background: 'linear-gradient(135deg, rgba(37,99,235,0.1), rgba(124,58,237,0.15))',
+                                color: '#7C3AED',
+                                border: '1px solid rgba(124,58,237,0.25)',
+                              }}
+                            >
+                              ✨ ONNX AI
+                            </span>
+                          )}
 
                           {/* Layer Name */}
                           <span
