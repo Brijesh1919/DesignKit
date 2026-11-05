@@ -7,6 +7,7 @@ import {
   type PaletteShade,
 } from '../../utils/color'
 import { sendToPlugin } from '../../utils/messaging'
+import { copyToClipboard } from '../../utils/clipboard'
 import type { SelectionInfo } from '../../../shared/types'
 import { SelectionBanner } from '../../components/Selection/SelectionBanner'
 
@@ -40,21 +41,21 @@ function newEntry(hex = '#2563EB', name = 'Primary'): PaletteEntry {
 
 const CopyIcon = () => (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
   </svg>
 )
 
 const TrashIcon = () => (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
-    <path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
+    <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" />
+    <path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
   </svg>
 )
 
 const PlusIcon = () => (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
   </svg>
 )
 
@@ -101,20 +102,24 @@ const PaletteRow: React.FC<PaletteRowProps> = ({
   }
 
   const handleCopy = async (hex: string, shade: string) => {
-    try {
-      await navigator.clipboard.writeText(hex)
+    const success = await copyToClipboard(hex)
+    if (success) {
       onChange(entry.id, { copiedShade: shade })
       setTimeout(() => onChange(entry.id, { copiedShade: null }), 1500)
       onSuccess(`Copied ${hex}`)
-    } catch {
+    } else {
       onError('Failed to copy to clipboard')
     }
   }
 
-  const handleCopyAll = () => {
+  const handleCopyAll = async () => {
     const text = entry.palette.map(p => `${p.shade}: ${p.hex}`).join('\n')
-    navigator.clipboard.writeText(text)
-    onSuccess(`Copied all shades for ${entry.groupName || `Color ${index + 1}`}`)
+    const success = await copyToClipboard(text)
+    if (success) {
+      onSuccess(`Copied all shades for ${entry.groupName || `Color ${index + 1}`}`)
+    } else {
+      onError('Failed to copy to clipboard')
+    }
   }
 
   const handleCreateStyles = () => {
@@ -266,7 +271,7 @@ const PaletteRow: React.FC<PaletteRowProps> = ({
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
                         stroke={useWhite ? '#fff' : '#000'} strokeWidth="2.5"
                         strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="20 6 9 17 4 12"/>
+                        <polyline points="20 6 9 17 4 12" />
                       </svg>
                     )}
                   </div>

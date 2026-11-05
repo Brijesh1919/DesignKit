@@ -18,7 +18,9 @@ const RATIO_PRESETS = [
 
 export const LineHeightCalculator: React.FC<Props> = ({ selection, onSuccess, onError }) => {
   const [fontSize, setFontSize] = useState(16)
+  const [fontSizeInput, setFontSizeInput] = useState('16')
   const [ratio, setRatio] = useState(1.5)
+  const [ratioInput, setRatioInput] = useState('1.5')
   const [snapToGrid, setSnapToGrid] = useState<number | null>(4) // 4 or 8 or null
   const [unit, setUnit] = useState<'PIXELS' | 'PERCENT'>('PIXELS')
 
@@ -37,10 +39,23 @@ export const LineHeightCalculator: React.FC<Props> = ({ selection, onSuccess, on
       return
     }
 
+    const parsedSize = parseInt(fontSizeInput, 10)
+    const effectiveFontSize = !isNaN(parsedSize) && parsedSize >= 6 ? parsedSize : fontSize
+
+    const parsedRatio = parseFloat(ratioInput)
+    const effectiveRatio = !isNaN(parsedRatio) && parsedRatio >= 0.5 ? parsedRatio : ratio
+
+    const raw = effectiveFontSize * effectiveRatio
+    let finalLh = Math.round(raw)
+    if (snapToGrid) {
+      finalLh = Math.round(raw / snapToGrid) * snapToGrid
+    }
+    if (finalLh < effectiveFontSize) finalLh = effectiveFontSize
+
     sendToPlugin({
       type: 'APPLY_LINE_HEIGHT',
       payload: {
-        lineHeight: unit === 'PERCENT' ? Math.round(ratio * 100) : calculatedLh,
+        lineHeight: unit === 'PERCENT' ? Math.round(effectiveRatio * 100) : finalLh,
         unit,
       },
     })
@@ -69,12 +84,60 @@ export const LineHeightCalculator: React.FC<Props> = ({ selection, onSuccess, on
                 <div>
                   <label className="label" style={{ fontSize: 11 }}>Font Size (px)</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     className="input"
                     style={{ height: 30, fontSize: 12 }}
-                    value={fontSize}
-                    onChange={e => setFontSize(Math.max(6, parseInt(e.target.value) || 16))}
+                    value={fontSizeInput}
+                    placeholder="16"
+                    onChange={e => {
+                      const raw = e.target.value.replace(/[^0-9]/g, '')
+                      setFontSizeInput(raw)
+                      const num = parseInt(raw, 10)
+                      if (!isNaN(num) && num > 0) {
+                        setFontSize(num)
+                      }
+                    }}
+                    onBlur={() => {
+                      const num = parseInt(fontSizeInput, 10)
+                      const clamped = isNaN(num) || num < 6 ? 16 : Math.min(400, num)
+                      setFontSize(clamped)
+                      setFontSizeInput(String(clamped))
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === 'ArrowUp') {
+                        e.preventDefault()
+                        const delta = e.shiftKey ? 10 : 1
+                        const next = Math.min(400, fontSize + delta)
+                        setFontSize(next)
+                        setFontSizeInput(String(next))
+                      } else if (e.key === 'ArrowDown') {
+                        e.preventDefault()
+                        const delta = e.shiftKey ? 10 : 1
+                        const next = Math.max(6, fontSize - delta)
+                        setFontSize(next)
+                        setFontSizeInput(String(next))
+                      } else if (e.key === 'Enter') {
+                        (e.target as HTMLInputElement).blur()
+                      }
+                    }}
                   />
+                  <div style={{ display: 'flex', gap: 3, marginTop: 4 }}>
+                    {[12, 14, 16, 20, 24, 32].map(s => (
+                      <button
+                        key={s}
+                        type="button"
+                        className={`btn btn-sm ${fontSize === s ? 'btn-primary' : 'btn-secondary'}`}
+                        style={{ height: 20, padding: '0 4px', fontSize: 10, flex: 1 }}
+                        onClick={() => {
+                          setFontSize(s)
+                          setFontSizeInput(String(s))
+                        }}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div>
@@ -90,6 +153,49 @@ export const LineHeightCalculator: React.FC<Props> = ({ selection, onSuccess, on
                         {g ? `${g}pt` : 'None'}
                       </button>
                     ))}
+                  </div>
+
+                  <div style={{ marginTop: 6 }}>
+                    <label className="label" style={{ fontSize: 10 }}>Custom Ratio</label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      className="input"
+                      style={{ height: 26, fontSize: 11 }}
+                      placeholder="1.5"
+                      value={ratioInput}
+                      onChange={e => {
+                        const raw = e.target.value.replace(/[^0-9.]/g, '')
+                        const parts = raw.split('.')
+                        const clean = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : raw
+                        setRatioInput(clean)
+                        const num = parseFloat(clean)
+                        if (!isNaN(num) && num > 0) {
+                          setRatio(num)
+                        }
+                      }}
+                      onBlur={() => {
+                        const num = parseFloat(ratioInput)
+                        const clamped = isNaN(num) || num < 0.5 ? 1.5 : Math.min(3, Math.round(num * 1000) / 1000)
+                        setRatio(clamped)
+                        setRatioInput(String(clamped))
+                      }}
+                      onKeyDown={e => {
+                        if (e.key === 'ArrowUp') {
+                          e.preventDefault()
+                          const next = Math.min(3, Math.round((ratio + 0.05) * 100) / 100)
+                          setRatio(next)
+                          setRatioInput(String(next))
+                        } else if (e.key === 'ArrowDown') {
+                          e.preventDefault()
+                          const next = Math.max(0.5, Math.round((ratio - 0.05) * 100) / 100)
+                          setRatio(next)
+                          setRatioInput(String(next))
+                        } else if (e.key === 'Enter') {
+                          (e.target as HTMLInputElement).blur()
+                        }
+                      }}
+                    />
                   </div>
                 </div>
               </div>
@@ -147,7 +253,10 @@ export const LineHeightCalculator: React.FC<Props> = ({ selection, onSuccess, on
               {RATIO_PRESETS.map(preset => (
                 <div
                   key={preset.label}
-                  onClick={() => setRatio(preset.ratio)}
+                  onClick={() => {
+                    setRatio(preset.ratio)
+                    setRatioInput(String(preset.ratio))
+                  }}
                   style={{
                     display: 'flex',
                     alignItems: 'center',

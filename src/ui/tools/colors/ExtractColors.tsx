@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { sendToPlugin } from '../../utils/messaging'
 import { shouldUseWhiteText } from '../../utils/color'
+import { copyToClipboard } from '../../utils/clipboard'
 import type { SelectionInfo, ExtractedColorItem } from '../../../shared/types'
 
 interface Props {
@@ -16,6 +17,7 @@ export const ExtractColors: React.FC<Props> = ({ selection, onSuccess, onError }
   const [totalLayers, setTotalLayers] = useState(0)
   const [filterQuery, setFilterQuery] = useState('')
   const [hasScanned, setHasScanned] = useState(false)
+  const [copiedHex, setCopiedHex] = useState<string | null>(null)
 
   const handleScan = () => {
     setIsLoading(true)
@@ -46,10 +48,12 @@ export const ExtractColors: React.FC<Props> = ({ selection, onSuccess, onError }
   }, [scope])
 
   const handleCopy = async (hex: string) => {
-    try {
-      await navigator.clipboard.writeText(hex)
+    const success = await copyToClipboard(hex)
+    if (success) {
+      setCopiedHex(hex)
+      setTimeout(() => setCopiedHex(null), 1500)
       onSuccess(`Copied ${hex}`)
-    } catch {
+    } else {
       onError('Failed to copy')
     }
   }
@@ -186,7 +190,10 @@ export const ExtractColors: React.FC<Props> = ({ selection, onSuccess, onError }
                             alignItems: 'flex-end',
                             justifyContent: 'space-between',
                             padding: '2px 4px',
+                            cursor: 'pointer',
                           }}
+                          onClick={() => handleCopy(item.hex)}
+                          title="Click swatch to copy hex"
                         >
                           <span
                             style={{
@@ -212,21 +219,36 @@ export const ExtractColors: React.FC<Props> = ({ selection, onSuccess, onError }
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 'var(--fw-semibold)', color: 'var(--c-text-primary)' }}>
+                          <span
+                            style={{
+                              fontFamily: 'var(--font-mono)',
+                              fontSize: 11,
+                              fontWeight: 'var(--fw-semibold)',
+                              color: 'var(--c-text-primary)',
+                              cursor: 'pointer',
+                            }}
+                            onClick={() => handleCopy(item.hex)}
+                            title="Click to copy hex"
+                          >
                             {item.hex}
                           </span>
                           <div style={{ display: 'flex', gap: 4 }}>
                             <button
-                              className="btn btn-secondary btn-sm"
-                              style={{ height: 22, padding: '0 5px', fontSize: 10 }}
+                              className={`btn btn-sm ${copiedHex === item.hex ? 'btn-primary' : 'btn-secondary'}`}
+                              style={{
+                                height: 22,
+                                padding: '0 6px',
+                                fontSize: 10,
+                                ...(copiedHex === item.hex ? { background: '#10B981', borderColor: '#10B981', color: '#fff' } : {}),
+                              }}
                               onClick={() => handleCopy(item.hex)}
-                              title="Copy hex"
+                              title="Copy hex code"
                             >
-                              Copy
+                              {copiedHex === item.hex ? 'Copied!' : 'Copy'}
                             </button>
                             <button
                               className="btn btn-secondary btn-sm"
-                              style={{ height: 22, padding: '0 5px', fontSize: 10 }}
+                              style={{ height: 22, padding: '0 6px', fontSize: 10 }}
                               onClick={() => handleApply(item.hex)}
                               title="Apply color to selected layer"
                             >

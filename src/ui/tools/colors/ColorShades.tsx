@@ -9,6 +9,7 @@ import {
   shouldUseWhiteText,
 } from '../../utils/color'
 import { sendToPlugin } from '../../utils/messaging'
+import { copyToClipboard } from '../../utils/clipboard'
 import type { SelectionInfo } from '../../../shared/types'
 
 interface Props {
@@ -68,10 +69,10 @@ export const ColorShades: React.FC<Props> = ({ selection, onSuccess, onError }) 
   const shades = generateShades(validHex, curveBias, satMult)
 
   const handleCopy = async (hex: string) => {
-    try {
-      await navigator.clipboard.writeText(hex)
+    const success = await copyToClipboard(hex)
+    if (success) {
       onSuccess(`Copied ${hex}`)
-    } catch {
+    } else {
       onError('Failed to copy')
     }
   }

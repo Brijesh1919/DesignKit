@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { generateTypeScale, SCALES, type ScaleKey, type TypeLevel } from '../../utils/typography'
 import { sendToPlugin } from '../../utils/messaging'
+import { copyToClipboard } from '../../utils/clipboard'
 import type { TextStyleDef } from '../../../shared/types'
 
 interface Props {
@@ -23,6 +24,7 @@ const WEIGHT_LABELS: Record<number, string> = {
 
 export const TypographyScale: React.FC<Props> = ({ onSuccess, onError }) => {
   const [baseSize, setBaseSize] = useState(16)
+  const [baseSizeInput, setBaseSizeInput] = useState('16')
   const [scaleKey, setScaleKey] = useState<ScaleKey>('majorThird')
   const [weightMode, setWeightMode] = useState<WeightMode>('per-level')
   const [uniformWeight, setUniformWeight] = useState(400)
@@ -42,7 +44,13 @@ export const TypographyScale: React.FC<Props> = ({ onSuccess, onError }) => {
       return
     }
 
-    const styles: TextStyleDef[] = scale.map(level => ({
+    const parsedSize = parseInt(baseSizeInput, 10)
+    const effectiveBaseSize = !isNaN(parsedSize) && parsedSize >= 6 ? parsedSize : baseSize
+    const currentScale = effectiveBaseSize !== baseSize
+      ? generateTypeScale(effectiveBaseSize, scaleKey, lineHeightMode)
+      : scale
+
+    const styles: TextStyleDef[] = currentScale.map(level => ({
       name: `${prefix}${level.name}`,
       fontSize: level.fontSize,
       lineHeight: level.lineHeight,
@@ -54,7 +62,7 @@ export const TypographyScale: React.FC<Props> = ({ onSuccess, onError }) => {
     sendToPlugin({ type: 'CREATE_TEXT_STYLES', payload: styles })
   }
 
-  const handleCopyCSS = () => {
+  const handleCopyCSS = async () => {
     const css = scale
       .map(level => {
         const w = resolveWeight(level)
@@ -68,8 +76,12 @@ export const TypographyScale: React.FC<Props> = ({ onSuccess, onError }) => {
         )
       })
       .join('\n\n')
-    navigator.clipboard.writeText(css)
-    onSuccess('Copied CSS to clipboard')
+    const success = await copyToClipboard(css)
+    if (success) {
+      onSuccess('Copied CSS to clipboard')
+    } else {
+      onError('Failed to copy CSS to clipboard')
+    }
   }
 
   const selectedScale = SCALES.find(s => s.key === scaleKey)
@@ -96,17 +108,61 @@ export const TypographyScale: React.FC<Props> = ({ onSuccess, onError }) => {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     <input
                       id="type-base-size"
-                      className="num-input"
-                      type="number"
-                      min={8}
-                      max={32}
-                      value={baseSize}
-                      onChange={e =>
-                        setBaseSize(Math.max(8, Math.min(32, parseInt(e.target.value) || 16)))
-                      }
+                      className="input"
+                      type="text"
+                      inputMode="numeric"
+                      value={baseSizeInput}
+                      placeholder="16"
+                      onChange={e => {
+                        const raw = e.target.value.replace(/[^0-9]/g, '')
+                        setBaseSizeInput(raw)
+                        const num = parseInt(raw, 10)
+                        if (!isNaN(num) && num >= 6 && num <= 64) {
+                          setBaseSize(num)
+                        }
+                      }}
+                      onBlur={() => {
+                        const num = parseInt(baseSizeInput, 10)
+                        const clamped = isNaN(num) || num < 6 ? 16 : Math.min(64, num)
+                        setBaseSize(clamped)
+                        setBaseSizeInput(String(clamped))
+                      }}
+                      onKeyDown={e => {
+                        if (e.key === 'ArrowUp') {
+                          e.preventDefault()
+                          const delta = e.shiftKey ? 10 : 1
+                          const next = Math.min(64, baseSize + delta)
+                          setBaseSize(next)
+                          setBaseSizeInput(String(next))
+                        } else if (e.key === 'ArrowDown') {
+                          e.preventDefault()
+                          const delta = e.shiftKey ? 10 : 1
+                          const next = Math.max(6, baseSize - delta)
+                          setBaseSize(next)
+                          setBaseSizeInput(String(next))
+                        } else if (e.key === 'Enter') {
+                          (e.target as HTMLInputElement).blur()
+                        }
+                      }}
                       style={{ height: 30, fontSize: 12, flex: 1 }}
                     />
                     <span style={{ fontSize: 11, color: 'var(--c-text-tertiary)' }}>px</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 3, marginTop: 4 }}>
+                    {[12, 14, 16, 18, 20].map(s => (
+                      <button
+                        key={s}
+                        type="button"
+                        className={`btn btn-sm ${baseSize === s ? 'btn-primary' : 'btn-secondary'}`}
+                        style={{ height: 20, padding: '0 4px', fontSize: 10, flex: 1 }}
+                        onClick={() => {
+                          setBaseSize(s)
+                          setBaseSizeInput(String(s))
+                        }}
+                      >
+                        {s}
+                      </button>
+                    ))}
                   </div>
                 </div>
 

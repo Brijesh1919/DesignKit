@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { extractDominantColors, shouldUseWhiteText } from '../../utils/color'
 import { sendToPlugin } from '../../utils/messaging'
+import { copyToClipboard } from '../../utils/clipboard'
 import type { SelectionInfo, ImageBytesPayload } from '../../../shared/types'
 import { SelectionBanner } from '../../components/Selection/SelectionBanner'
 
@@ -42,7 +43,7 @@ export const ImageColorExtractor: React.FC<Props> = ({
       // Scale down for performance
       const maxDim = 200
       const scale = Math.min(maxDim / img.width, maxDim / img.height, 1)
-      canvas.width  = Math.round(img.width  * scale)
+      canvas.width = Math.round(img.width * scale)
       canvas.height = Math.round(img.height * scale)
 
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
@@ -71,10 +72,10 @@ export const ImageColorExtractor: React.FC<Props> = ({
   }
 
   const handleCopy = async (hex: string) => {
-    try {
-      await navigator.clipboard.writeText(hex)
+    const success = await copyToClipboard(hex)
+    if (success) {
       onSuccess(`Copied ${hex}`)
-    } catch {
+    } else {
       onError('Failed to copy')
     }
   }

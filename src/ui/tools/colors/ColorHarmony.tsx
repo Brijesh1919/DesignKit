@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { generateHarmonies, isValidHex, normalizeHex, shouldUseWhiteText, type HarmonySet } from '../../utils/color'
 import { sendToPlugin } from '../../utils/messaging'
+import { copyToClipboard } from '../../utils/clipboard'
 import type { SelectionInfo } from '../../../shared/types'
 
 interface Props {
@@ -76,10 +77,10 @@ export const ColorHarmony: React.FC<Props> = ({ selection, onSuccess, onError })
   }
 
   const handleCopy = async (hex: string) => {
-    try {
-      await navigator.clipboard.writeText(hex)
+    const success = await copyToClipboard(hex)
+    if (success) {
       onSuccess(`Copied ${hex}`)
-    } catch {
+    } else {
       onError('Failed to copy')
     }
   }

@@ -27,8 +27,11 @@ export const TextStyleGenerator: React.FC<Props> = ({ selection, onSuccess, onEr
   const [fontFamily, setFontFamily] = useState('Inter')
   const [fontWeight, setFontWeight] = useState(600)
   const [fontSize, setFontSize] = useState(28)
+  const [fontSizeInput, setFontSizeInput] = useState('28')
   const [lineHeight, setLineHeight] = useState(36)
+  const [lineHeightInput, setLineHeightInput] = useState('36')
   const [letterSpacing, setLetterSpacing] = useState(-0.5)
+  const [letterSpacingInput, setLetterSpacingInput] = useState('-0.5')
   const [previewText, setPreviewText] = useState('The quick brown fox jumps over the lazy dog')
 
   const handleCreate = () => {
@@ -37,15 +40,24 @@ export const TextStyleGenerator: React.FC<Props> = ({ selection, onSuccess, onEr
       return
     }
 
+    const parsedSize = parseInt(fontSizeInput, 10)
+    const finalFontSize = !isNaN(parsedSize) && parsedSize >= 6 ? parsedSize : fontSize
+
+    const parsedLh = parseInt(lineHeightInput, 10)
+    const finalLineHeight = !isNaN(parsedLh) && parsedLh > 0 ? parsedLh : lineHeight
+
+    const parsedLs = parseFloat(letterSpacingInput)
+    const finalLetterSpacing = !isNaN(parsedLs) ? parsedLs : letterSpacing
+
     sendToPlugin({
       type: 'CREATE_CUSTOM_TEXT_STYLE',
       payload: {
         name: styleName.trim(),
         fontFamily: fontFamily.trim() || 'Inter',
         fontWeight,
-        fontSize,
-        lineHeight: lineHeight > 0 ? lineHeight : undefined,
-        letterSpacing,
+        fontSize: finalFontSize,
+        lineHeight: finalLineHeight > 0 ? finalLineHeight : undefined,
+        letterSpacing: finalLetterSpacing,
       },
     })
   }
@@ -113,14 +125,42 @@ export const TextStyleGenerator: React.FC<Props> = ({ selection, onSuccess, onEr
                 <div>
                   <label className="label" style={{ fontSize: 11 }}>Font Size (px)</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     className="input"
                     style={{ height: 30, fontSize: 12 }}
-                    value={fontSize}
+                    value={fontSizeInput}
+                    placeholder="16"
                     onChange={e => {
-                      const val = Math.max(6, parseInt(e.target.value) || 16)
-                      setFontSize(val)
-                      setLineHeight(Math.round(val * 1.35))
+                      const raw = e.target.value.replace(/[^0-9]/g, '')
+                      setFontSizeInput(raw)
+                      const num = parseInt(raw, 10)
+                      if (!isNaN(num) && num > 0) {
+                        setFontSize(num)
+                      }
+                    }}
+                    onBlur={() => {
+                      const num = parseInt(fontSizeInput, 10)
+                      const clamped = isNaN(num) || num < 6 ? 16 : Math.min(400, num)
+                      setFontSize(clamped)
+                      setFontSizeInput(String(clamped))
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === 'ArrowUp') {
+                        e.preventDefault()
+                        const delta = e.shiftKey ? 10 : 1
+                        const next = Math.min(400, fontSize + delta)
+                        setFontSize(next)
+                        setFontSizeInput(String(next))
+                      } else if (e.key === 'ArrowDown') {
+                        e.preventDefault()
+                        const delta = e.shiftKey ? 10 : 1
+                        const next = Math.max(6, fontSize - delta)
+                        setFontSize(next)
+                        setFontSizeInput(String(next))
+                      } else if (e.key === 'Enter') {
+                        (e.target as HTMLInputElement).blur()
+                      }
                     }}
                   />
                 </div>
@@ -133,11 +173,15 @@ export const TextStyleGenerator: React.FC<Props> = ({ selection, onSuccess, onEr
                   {SIZE_PRESETS.map(s => (
                     <button
                       key={s}
+                      type="button"
                       className={`btn btn-sm ${fontSize === s ? 'btn-primary' : 'btn-secondary'}`}
                       style={{ height: 22, padding: '0 6px', fontSize: 10 }}
                       onClick={() => {
                         setFontSize(s)
-                        setLineHeight(Math.round(s * 1.35))
+                        setFontSizeInput(String(s))
+                        const autoLh = Math.round(s * 1.35)
+                        setLineHeight(autoLh)
+                        setLineHeightInput(String(autoLh))
                       }}
                     >
                       {s}
@@ -151,22 +195,89 @@ export const TextStyleGenerator: React.FC<Props> = ({ selection, onSuccess, onEr
                 <div>
                   <label className="label" style={{ fontSize: 11 }}>Line Height (px)</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     className="input"
                     style={{ height: 30, fontSize: 12 }}
-                    value={lineHeight}
-                    onChange={e => setLineHeight(Math.max(0, parseInt(e.target.value) || 0))}
+                    value={lineHeightInput}
+                    placeholder="36"
+                    onChange={e => {
+                      const raw = e.target.value.replace(/[^0-9]/g, '')
+                      setLineHeightInput(raw)
+                      const num = parseInt(raw, 10)
+                      if (!isNaN(num) && num >= 0) {
+                        setLineHeight(num)
+                      }
+                    }}
+                    onBlur={() => {
+                      const num = parseInt(lineHeightInput, 10)
+                      const clamped = isNaN(num) ? Math.round(fontSize * 1.35) : Math.max(0, Math.min(500, num))
+                      setLineHeight(clamped)
+                      setLineHeightInput(String(clamped))
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === 'ArrowUp') {
+                        e.preventDefault()
+                        const delta = e.shiftKey ? 10 : 1
+                        const next = Math.min(500, lineHeight + delta)
+                        setLineHeight(next)
+                        setLineHeightInput(String(next))
+                      } else if (e.key === 'ArrowDown') {
+                        e.preventDefault()
+                        const delta = e.shiftKey ? 10 : 1
+                        const next = Math.max(0, lineHeight - delta)
+                        setLineHeight(next)
+                        setLineHeightInput(String(next))
+                      } else if (e.key === 'Enter') {
+                        (e.target as HTMLInputElement).blur()
+                      }
+                    }}
                   />
                 </div>
                 <div>
                   <label className="label" style={{ fontSize: 11 }}>Tracking (px)</label>
                   <input
-                    type="number"
-                    step="0.1"
+                    type="text"
+                    inputMode="decimal"
                     className="input"
                     style={{ height: 30, fontSize: 12 }}
-                    value={letterSpacing}
-                    onChange={e => setLetterSpacing(parseFloat(e.target.value) || 0)}
+                    value={letterSpacingInput}
+                    placeholder="0"
+                    onChange={e => {
+                      const raw = e.target.value
+                      const isNegative = raw.startsWith('-')
+                      const stripped = raw.replace(/[^0-9.]/g, '')
+                      const parts = stripped.split('.')
+                      const clean = (isNegative ? '-' : '') + (parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : stripped)
+                      setLetterSpacingInput(clean)
+                      const num = parseFloat(clean)
+                      if (!isNaN(num)) {
+                        setLetterSpacing(num)
+                      }
+                    }}
+                    onBlur={() => {
+                      const num = parseFloat(letterSpacingInput)
+                      const clamped = isNaN(num) ? 0 : Math.max(-50, Math.min(100, Math.round(num * 100) / 100))
+                      setLetterSpacing(clamped)
+                      setLetterSpacingInput(String(clamped))
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === 'ArrowUp') {
+                        e.preventDefault()
+                        const delta = e.shiftKey ? 1 : 0.1
+                        const next = Math.min(100, Math.round((letterSpacing + delta) * 100) / 100)
+                        setLetterSpacing(next)
+                        setLetterSpacingInput(String(next))
+                      } else if (e.key === 'ArrowDown') {
+                        e.preventDefault()
+                        const delta = e.shiftKey ? 1 : 0.1
+                        const next = Math.max(-50, Math.round((letterSpacing - delta) * 100) / 100)
+                        setLetterSpacing(next)
+                        setLetterSpacingInput(String(next))
+                      } else if (e.key === 'Enter') {
+                        (e.target as HTMLInputElement).blur()
+                      }
+                    }}
                   />
                 </div>
               </div>
