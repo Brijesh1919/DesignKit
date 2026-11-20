@@ -16,6 +16,10 @@ export interface LoadedModelSession {
   backend: AIRuntimeBackend
   inputName: string
   outputName: string
+  inputWidth: number
+  inputHeight: number
+  normType: 'rmbg' | 'imagenet'
+  modelLabel: string
 }
 
 const RMBG14_CACHE_KEY = 'rmbg14_quantized_v1'
@@ -30,6 +34,7 @@ if (typeof window !== 'undefined') {
 }
 
 export class ModelLoader {
+  private static cachedSession: LoadedModelSession | null = null
   private session: ort.InferenceSession | null = null
   private activeBackend: AIRuntimeBackend | null = null
 
@@ -37,6 +42,7 @@ export class ModelLoader {
    * Returns whether the RMBG-1.4 model is already cached locally.
    */
   public async isModelCached(): Promise<boolean> {
+    if (ModelLoader.cachedSession) return true
     return await ModelCache.hasModel(RMBG14_CACHE_KEY)
   }
 
@@ -44,27 +50,28 @@ export class ModelLoader {
    * Returns the cached session if one already exists in memory.
    */
   public getCachedSession(): LoadedModelSession | null {
-    if (this.session && this.activeBackend) {
-      return {
-        session: this.session,
-        backend: this.activeBackend,
-        inputName: this.session.inputNames[0] || 'input',
-        outputName: this.session.outputNames[0] || 'output',
-      }
+    if (this.session && this.activeBackend && ModelLoader.cachedSession) {
+      return ModelLoader.cachedSession
+    }
+    if (ModelLoader.cachedSession) {
+      this.session = ModelLoader.cachedSession.session
+      this.activeBackend = ModelLoader.cachedSession.backend
+      return ModelLoader.cachedSession
     }
     return null
   }
 
   /**
-   * Initialize ONNX InferenceSession from cached IndexedDB model or CDN.
+   * Initialize ONNX InferenceSession from cached storage or CDN.
    */
   public async loadModel(onProgress?: AIProgressCallback): Promise<LoadedModelSession> {
-    if (this.session && this.activeBackend) {
+    const existing = this.getCachedSession()
+    if (existing) {
       console.log('[AI] Reusing in-memory model session')
-      return this.getCachedSession()!
+      return existing
     }
 
-    // 1. Check local IndexedDB cache
+    // 1. Check local persistent cache (Memory -> CacheStorage -> IndexedDB)
     onProgress?.('Checking local AI cache...')
     let modelBuffer = await ModelCache.getModel(RMBG14_CACHE_KEY)
 
@@ -72,11 +79,11 @@ export class ModelLoader {
     if (!modelBuffer) {
       console.log('[AI] Model not in cache. Downloading RMBG-1.4...')
       modelBuffer = await this.downloadModelWithProgress(PRIMARY_MODEL_URL, onProgress)
-      // Save to IndexedDB so subsequent runs are instant & offline
+      // Save to persistent storage so subsequent runs are instant & offline
       await ModelCache.saveModel(RMBG14_CACHE_KEY, modelBuffer)
-      console.log('[AI] Saved RMBG-1.4 model to IndexedDB cache')
+      console.log('[AI] Saved RMBG-1.4 model to persistent cache')
     } else {
-      console.log(`[AI] Loaded RMBG-1.4 model from IndexedDB cache (${modelBuffer.byteLength} bytes)`)
+      console.log(`[AI] Loaded RMBG-1.4 model from persistent cache (${modelBuffer.byteLength} bytes)`)
       onProgress?.('Loading cached AI model...')
     }
 
@@ -90,11 +97,6 @@ export class ModelLoader {
     bufferInput: ArrayBuffer | Uint8Array,
     onProgress?: AIProgressCallback
   ): Promise<LoadedModelSession> {
-    if (this.session && this.activeBackend) {
-      console.log('[AI] Reusing in-memory model session')
-      return this.getCachedSession()!
-    }
-
     let buffer: ArrayBuffer
     if (bufferInput instanceof Uint8Array) {
       const copy = new Uint8Array(bufferInput.byteLength)
@@ -104,8 +106,6 @@ export class ModelLoader {
       buffer = bufferInput
     }
 
-    // Save user-provided buffer to IndexedDB cache
-    await ModelCache.saveModel(RMBG14_CACHE_KEY, buffer)
     return await this.createSessionFromBuffer(buffer, onProgress)
   }
 
@@ -224,15 +224,53 @@ export class ModelLoader {
     const inputName = session.inputNames[0] || 'input'
     const outputName = session.outputNames[0] || 'output'
 
-    console.log('[AI] RMBG-1.4 model ready')
-    onProgress?.('✓ AI model ready')
+    // Dynamically detect model input dimensions and normalization
+    let inputWidth = 1024
+    let inputHeight = 1024
+    let normType: 'rmbg' | 'imagenet' = 'rmbg'
+    let modelLabel = 'BRIA RMBG-1.4 (1024×1024 HD)'
 
-    return {
+    try {
+      const anySession = session as any
+      if (anySession.inputMetadata && anySession.inputMetadata.length > 0) {
+        const shape = anySession.inputMetadata[0]?.shape
+        if (Array.isArray(shape) && shape.length >= 4) {
+          const h = Number(shape[2])
+          const w = Number(shape[3])
+          if (!isNaN(h) && h > 0) inputHeight = h
+          if (!isNaN(w) && w > 0) inputWidth = w
+        }
+      }
+    } catch (e) {
+      console.warn('[AI] Error detecting input dimensions, using defaults:', e)
+    }
+
+    if (inputWidth <= 320 && inputHeight <= 320) {
+      normType = 'imagenet'
+      modelLabel = `U²-Net / Silueta (${inputWidth}×${inputHeight})`
+    } else if (inputWidth >= 1024) {
+      normType = 'rmbg'
+      modelLabel = `High-Res Model (${inputWidth}×${inputHeight})`
+    } else {
+      modelLabel = `Custom Model (${inputWidth}×${inputHeight})`
+    }
+
+    console.log(`[AI] Model configured: ${modelLabel}, input: ${inputName}, output: ${outputName}`)
+    onProgress?.(`✓ ${modelLabel} ready`)
+
+    const loadedSession: LoadedModelSession = {
       session,
       backend: backendUsed,
       inputName,
       outputName,
+      inputWidth,
+      inputHeight,
+      normType,
+      modelLabel,
     }
+    ModelLoader.cachedSession = loadedSession
+
+    return loadedSession
   }
 
   public getSession(): ort.InferenceSession | null {

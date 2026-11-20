@@ -37,6 +37,10 @@ export class RMBG14Model implements BackgroundSegmentationModel {
     return this.loader.getBackend()
   }
 
+  public getModelLabel(): string {
+    return this.loader.getCachedSession()?.modelLabel || 'BRIA RMBG-1.4 (1024×1024 HD)'
+  }
+
   public async segment(input: ImageData, onProgress?: AIProgressCallback): Promise<AIMaskResult> {
     // Ensure session is loaded
     if (!this.loader.getCachedSession()) {
@@ -45,29 +49,40 @@ export class RMBG14Model implements BackgroundSegmentationModel {
 
     const cached = this.loader.getCachedSession()
     if (!cached) {
-      throw new Error('RMBG-1.4 model is not initialized.')
+      throw new Error('AI Model is not initialized.')
     }
-    const { session, inputName, outputName } = cached
+    const {
+      session,
+      inputName,
+      outputName,
+      inputWidth = 1024,
+      inputHeight = 1024,
+      normType = 'rmbg',
+      modelLabel = 'AI Model',
+    } = cached
 
-    console.log(`[AI] Image: ${input.width}x${input.height}`)
+    console.log(`[AI] Image: ${input.width}x${input.height}, Model Input: ${inputWidth}x${inputHeight} (${normType})`)
 
-    onProgress?.('Preparing high-res image...')
-    // 1024x1024 fixed high-resolution input for RMBG-1.4
-    const preprocessed = preprocessImage(input, 1024, 1024)
+    onProgress?.(`Preparing image for inference (${inputWidth}×${inputHeight})...`)
+    const preprocessed = preprocessImage(input, inputWidth, inputHeight, normType)
 
-    onProgress?.('Running background removal AI (1024x1024)...')
+    onProgress?.(`Running background removal AI (${inputWidth}×${inputHeight})...`)
     const feeds: Record<string, any> = {}
     feeds[inputName] = preprocessed.tensor
 
-    console.log('[AI] RMBG-1.4 inference started')
+    console.log(`[AI] ${modelLabel} inference started`)
     let results: Record<string, any>
     try {
       results = await session.run(feeds)
-      console.log('[AI] RMBG-1.4 inference completed')
+      console.log(`[AI] ${modelLabel} inference completed`)
     } catch (runErr: any) {
       const errMsg = runErr?.message || String(runErr)
-      console.error(`[AI] RMBG-1.4 inference failed: ${errMsg}`)
-      const err = new Error(`RMBG-1.4 inference failed: ${errMsg}`)
+      console.error(`[AI] ${modelLabel} inference failed: ${errMsg}`)
+      let userFriendlyMsg = `${modelLabel} inference failed: ${errMsg}`
+      if (errMsg.includes('bad_alloc') || errMsg.includes('out of memory')) {
+        userFriendlyMsg = `Memory limit exceeded (${modelLabel}). This model (200MB+ Transformer) exceeds the browser WebAssembly memory limit. Please use U²-Net, Silueta, or RMBG-1.4.`
+      }
+      const err = new Error(userFriendlyMsg)
       ;(err as any).isInferenceError = true
       throw err
     }
@@ -77,14 +92,14 @@ export class RMBG14Model implements BackgroundSegmentationModel {
     const fusedOutputName = outputNames[0] || outputName
     const outputTensor = results[fusedOutputName] || Object.values(results)[0]
     if (!outputTensor) {
-      const err = new Error('RMBG-1.4 inference failed: Model execution produced no output tensor')
+      const err = new Error(`${modelLabel} inference failed: Model execution produced no output tensor`)
       ;(err as any).isInferenceError = true
       throw err
     }
 
     const rawData = outputTensor.data as Float32Array
 
-    onProgress?.('Refining high-definition edges...')
+    onProgress?.('Refining alpha mask edges...')
 
     // Normalize mask and scale back to original image dimensions
     const scaledMask = postprocessMask(

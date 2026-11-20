@@ -80,6 +80,16 @@ class BackgroundAIService {
   }
 
   /**
+   * Returns active model label/name.
+   */
+  public getModelLabel(): string {
+    if ('getModelLabel' in this.activeModel && typeof (this.activeModel as any).getModelLabel === 'function') {
+      return (this.activeModel as any).getModelLabel()
+    }
+    return 'BRIA RMBG-1.4 (1024×1024 HD)'
+  }
+
+  /**
    * Run background segmentation on the provided ImageData.
    */
   public async removeBackground(

@@ -25,6 +25,8 @@ export const BackgroundRemover: React.FC<Props> = ({
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [runtimeBackend, setRuntimeBackend] = useState<AIRuntimeBackend | null>(null)
+  const [isCached, setIsCached] = useState<boolean | null>(null)
+  const [modelLabel, setModelLabel] = useState<string>('BRIA RMBG-1.4 (1024×1024 HD)')
 
   // ---- Mask & Image Data ----
   const [originalImageData, setOriginalImageData] = useState<ImageData | null>(null)
@@ -43,13 +45,80 @@ export const BackgroundRemover: React.FC<Props> = ({
   const previewCanvasRef = useRef<HTMLCanvasElement>(null)
   const isMouseDownRef = useRef(false)
 
-  // Decode & cache original image when imageBytes arrives from Figma
+  // Check if model is cached in local storage on mount (never downloads on mount)
+  useEffect(() => {
+    let isMounted = true
+    const checkCache = async () => {
+      try {
+        const cached = await BackgroundAI.isModelCached()
+        if (isMounted) setIsCached(cached)
+        // If already cached on disk, initialize the session in memory so inference is instant
+        if (cached && !BackgroundAI.isReady()) {
+          await BackgroundAI.initialize()
+          if (isMounted) {
+            setRuntimeBackend(BackgroundAI.getRuntime())
+            setModelLabel(BackgroundAI.getModelLabel())
+          }
+        }
+      } catch (err) {
+        console.warn('[BackgroundRemover] Check cache notice:', err)
+      }
+    }
+    checkCache()
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  // Run Background Removal for specific ImageData
+  const runRemovalForData = useCallback(
+    async (targetImageData: ImageData) => {
+      setIsProcessing(true)
+      setErrorMessage(null)
+
+      try {
+        if (!BackgroundAI.isReady()) {
+          const cached = await BackgroundAI.isModelCached()
+          if (cached) {
+            setStatusMessage('Loading cached AI model from local storage...')
+          } else {
+            setStatusMessage('Downloading AI model (one-time setup)...')
+          }
+          await BackgroundAI.initialize(msg => setStatusMessage(msg))
+        }
+
+        const activeLabel = BackgroundAI.getModelLabel()
+        setRuntimeBackend(BackgroundAI.getRuntime())
+        setModelLabel(activeLabel)
+        setIsCached(true)
+        setStatusMessage(`Segmenting with ${activeLabel}...`)
+
+        const result = await BackgroundAI.removeBackground(targetImageData, msg => setStatusMessage(msg))
+        setRawAlphaMask(result.alphaMask)
+        setManualAlphaMask(new Float32Array(result.alphaMask))
+        setStatusMessage('✓ Background successfully removed')
+        setPreviewMode('cutout')
+        onSuccess(`Background removed successfully with ${activeLabel}.`)
+      } catch (err) {
+        console.error('[BackgroundRemover] Error during removal:', err)
+        const msg = err instanceof Error ? err.message : 'Background removal failed.'
+        setErrorMessage(msg)
+        setStatusMessage(null)
+        onError(msg)
+      } finally {
+        setIsProcessing(false)
+      }
+    },
+    [onSuccess, onError]
+  )
+
+  // Decode & cache original image when imageBytes arrives from Figma (DOES NOT auto-remove or auto-download)
   useEffect(() => {
     if (!imageBytes) return
     setProcessedBytes(null)
     setRawAlphaMask(null)
     setManualAlphaMask(null)
-    setStatusMessage(null)
+    setStatusMessage('✓ Image loaded from selection')
     setErrorMessage(null)
 
     const blob = new Blob([new Uint8Array(imageBytes.bytes)], { type: 'image/png' })
@@ -66,68 +135,50 @@ export const BackgroundRemover: React.FC<Props> = ({
 
       const imgData = ctx.getImageData(0, 0, img.width, img.height)
       setOriginalImageData(imgData)
+      // Only load image preview; user explicitly clicks "Remove Background" to start removal
+    }
+    img.onerror = () => {
+      setErrorMessage('Failed to decode image from Figma selection.')
+      onError('Failed to decode image from Figma selection.')
     }
     img.src = url
 
     return () => URL.revokeObjectURL(url)
-  }, [imageBytes])
+  }, [imageBytes, onError])
 
   const handleLocalModelSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     setIsProcessing(true)
-    setStatusMessage('Reading local model file...')
+    setStatusMessage(`Loading ${file.name}...`)
     setErrorMessage(null)
     try {
       const buffer = await file.arrayBuffer()
       await BackgroundAI.initializeWithBuffer(buffer, msg => setStatusMessage(msg))
       setRuntimeBackend(BackgroundAI.getRuntime())
-      setStatusMessage('✓ Local model loaded and ready')
-      onSuccess('Local RMBG-1.4 model cached successfully.')
+      const activeLabel = BackgroundAI.getModelLabel()
+      setModelLabel(activeLabel)
+      setIsCached(true)
+      setStatusMessage(`✓ Loaded ${file.name} (${activeLabel})`)
+      onSuccess(`Loaded ${file.name} (${activeLabel}) successfully.`)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load local model.'
       setErrorMessage(msg)
       onError(msg)
     } finally {
       setIsProcessing(false)
+      e.target.value = ''
     }
   }
 
-  // Run RMBG-1.4 Background Removal
+  // Trigger manual removal or re-run
   const runRemoval = useCallback(async () => {
     if (!originalImageData) {
       onError('Please load an image layer from Figma first.')
       return
     }
-
-    setIsProcessing(true)
-    setErrorMessage(null)
-
-    try {
-      if (!BackgroundAI.isReady()) {
-        setStatusMessage('Initializing model (BRIA RMBG-1.4 1024×1024)...')
-        await BackgroundAI.initialize(msg => setStatusMessage(msg))
-      }
-
-      setRuntimeBackend(BackgroundAI.getRuntime())
-      setStatusMessage('Analyzing & segmenting subject (1024×1024)...')
-
-      const result = await BackgroundAI.removeBackground(originalImageData, msg => setStatusMessage(msg))
-      setRawAlphaMask(result.alphaMask)
-      setManualAlphaMask(new Float32Array(result.alphaMask))
-      setStatusMessage('✓ Background successfully removed')
-      setPreviewMode('cutout')
-      onSuccess('Background removed with high-definition RMBG-1.4.')
-    } catch (err) {
-      console.error('[BackgroundRemover] Error during removal:', err)
-      const msg = err instanceof Error ? err.message : 'Background removal failed.'
-      setErrorMessage(msg)
-      setStatusMessage(null)
-      onError(msg)
-    } finally {
-      setIsProcessing(false)
-    }
-  }, [originalImageData, onSuccess, onError])
+    await runRemovalForData(originalImageData)
+  }, [originalImageData, runRemovalForData, onError])
 
   // Render Canvas Live Preview & Export Clean PNG Bytes
   const updatePreviewCanvas = useCallback(() => {
@@ -345,9 +396,20 @@ export const BackgroundRemover: React.FC<Props> = ({
             <div className="tool-breadcrumb">Images / Background Remover</div>
             <h1 className="tool-title" style={{ margin: 0 }}>Background Remover</h1>
           </div>
-          <span style={{ fontSize: 10, color: 'var(--c-text-tertiary)' }}>
-            BRIA RMBG-1.4 (1024×1024 HD)
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 10, color: 'var(--c-text-tertiary)' }}>
+              {modelLabel}
+            </span>
+            {isCached === true ? (
+              <span className="tag" style={{ fontSize: 9, padding: '1px 6px', color: '#10B981', background: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.2)' }} title="Model is ready in memory or cached on disk">
+                ● Ready
+              </span>
+            ) : isCached === false ? (
+              <span className="tag" style={{ fontSize: 9, padding: '1px 6px', color: 'var(--c-text-tertiary)' }} title="Downloads once when clicking 'Remove Background'">
+                ○ Cloud Download
+              </span>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -417,8 +479,8 @@ export const BackgroundRemover: React.FC<Props> = ({
                 </button>
               </div>
             ) : (
-              <label style={{ fontSize: 10, color: 'var(--c-text-tertiary)', cursor: 'pointer', textDecoration: 'underline' }}>
-                Offline or custom model? Load local .onnx
+              <label style={{ fontSize: 10, color: 'var(--c-accent)', cursor: 'pointer', textDecoration: 'underline' }}>
+                Load local .onnx (any model)
                 <input
                   type="file"
                   accept=".onnx"
@@ -575,11 +637,15 @@ export const BackgroundRemover: React.FC<Props> = ({
           <div className="card-header" style={{ padding: '6px 12px', borderBottom: '1px solid var(--c-border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span className="card-title" style={{ fontSize: 11 }}>Preview Canvas</span>
             <span style={{ fontSize: 10, color: 'var(--c-text-tertiary)' }}>
-              {brushMode !== 'none'
-                ? `Brush: ${brushMode === 'remove' ? 'Erase' : 'Restore'} (${brushSize}px) — drag on canvas to edit`
-                : rawAlphaMask
-                ? 'Checkerboard indicates transparent cutout'
-                : 'Click "Remove Background" to generate high-resolution cutout'}
+              {isProcessing
+                ? (statusMessage || 'Processing background removal…')
+                : brushMode !== 'none'
+                  ? `Brush: ${brushMode === 'remove' ? 'Erase' : 'Restore'} (${brushSize}px) — drag on canvas to edit`
+                  : rawAlphaMask
+                    ? 'Checkerboard indicates transparent cutout'
+                    : originalImageData
+                      ? 'Click "Remove Background" to generate high-resolution cutout'
+                      : 'Select an image layer in Figma and click "Load Image from Selection"'}
             </span>
           </div>
 
@@ -629,12 +695,12 @@ export const BackgroundRemover: React.FC<Props> = ({
             ) : (
               <div style={{ textAlign: 'center', color: 'var(--c-text-tertiary)' }}>
                 <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.35, margin: '0 auto 8px' }}>
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                  <circle cx="8.5" cy="8.5" r="1.5"/>
-                  <polyline points="21 15 16 10 5 21"/>
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <polyline points="21 15 16 10 5 21" />
                 </svg>
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text-secondary)' }}>No Image Loaded</div>
-                <div style={{ fontSize: 11, marginTop: 4 }}>Select an image layer in Figma and click "Load Image from Selection"</div>
+                <div style={{ fontSize: 11, marginTop: 4 }}>Select an image layer in Figma and click &ldquo;Load Image from Selection&rdquo; to begin</div>
               </div>
             )}
           </div>

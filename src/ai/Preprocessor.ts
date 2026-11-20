@@ -22,19 +22,21 @@ const MEAN = 0.5
 const STD = 1.0
 
 /**
- * Resizes ImageData to 1024x1024 and prepares an NCHW normalized Float32 Tensor [1, 3, 1024, 1024].
+ * Resizes ImageData to targetWidth x targetHeight and prepares an NCHW normalized Float32 Tensor.
+ * Supports RMBG-1.4 normalization (mean 0.5, std 1.0) and ImageNet normalization (for U²-Net, Silueta, etc.).
  */
 export function preprocessImage(
   imageData: ImageData,
   targetWidth = 1024,
-  targetHeight = 1024
+  targetHeight = 1024,
+  normType: 'rmbg' | 'imagenet' = 'rmbg'
 ): PreprocessedData {
   const origWidth = imageData.width
   const origHeight = imageData.height
 
-  console.log(`[AI] RMBG-1.4 preprocessing started for ${origWidth}x${origHeight}`)
+  console.log(`[AI] Preprocessing image ${origWidth}x${origHeight} → model input ${targetWidth}x${targetHeight} (${normType})`)
 
-  // 1. Create temporary canvas to resize image copy to 1024x1024
+  // 1. Create temporary canvas to resize image copy to target dimensions
   const canvas = document.createElement('canvas')
   canvas.width = targetWidth
   canvas.height = targetHeight
@@ -62,7 +64,7 @@ export function preprocessImage(
   canvas.width = 0
   canvas.height = 0
 
-  // 2. Prepare NCHW Float32Array: shape [1, 3, 1024, 1024]
+  // 2. Prepare NCHW Float32Array: shape [1, 3, targetHeight, targetWidth]
   const imageSize = targetWidth * targetHeight
   const floatData = new Float32Array(3 * imageSize)
 
@@ -70,17 +72,30 @@ export function preprocessImage(
   const gOffset = imageSize
   const bOffset = 2 * imageSize
 
-  for (let i = 0; i < imageSize; i++) {
-    const px = i * 4
-    floatData[rOffset + i] = (pixels[px] / 255.0 - MEAN) / STD
-    floatData[gOffset + i] = (pixels[px + 1] / 255.0 - MEAN) / STD
-    floatData[bOffset + i] = (pixels[px + 2] / 255.0 - MEAN) / STD
+  if (normType === 'imagenet') {
+    // Standard ImageNet normalization for U²-Net, U²-NetP, Silueta
+    const rMean = 0.485, gMean = 0.456, bMean = 0.406
+    const rStd = 0.229, gStd = 0.224, bStd = 0.225
+    for (let i = 0; i < imageSize; i++) {
+      const px = i * 4
+      floatData[rOffset + i] = (pixels[px] / 255.0 - rMean) / rStd
+      floatData[gOffset + i] = (pixels[px + 1] / 255.0 - gMean) / gStd
+      floatData[bOffset + i] = (pixels[px + 2] / 255.0 - bMean) / bStd
+    }
+  } else {
+    // RMBG-1.4 / BiRefNet normalization: (pixel / 255.0 - 0.5) / 1.0
+    for (let i = 0; i < imageSize; i++) {
+      const px = i * 4
+      floatData[rOffset + i] = (pixels[px] / 255.0 - MEAN) / STD
+      floatData[gOffset + i] = (pixels[px + 1] / 255.0 - MEAN) / STD
+      floatData[bOffset + i] = (pixels[px + 2] / 255.0 - MEAN) / STD
+    }
   }
 
-  // 3. Create ONNX Tensor with shape [1, 3, 1024, 1024]
+  // 3. Create ONNX Tensor with shape [1, 3, targetHeight, targetWidth]
   const tensor = new ort.Tensor('float32', floatData, [1, 3, targetHeight, targetWidth])
 
-  console.log('[AI] RMBG-1.4 input tensor ready: [1, 3, 1024, 1024]')
+  console.log(`[AI] Input tensor ready: [1, 3, ${targetHeight}, ${targetWidth}]`)
 
   return {
     tensor,
