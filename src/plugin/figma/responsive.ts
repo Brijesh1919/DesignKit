@@ -124,9 +124,9 @@ export function buildResponsiveTree(
           if ('removed' in child && (child as any).removed) continue
           if ('visible' in child && child.visible === false) continue
           childNodes.push(buildResponsiveTree(child, rootX, rootY, depth + 1))
-        } catch (_) {}
+        } catch (_) { }
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   return {
@@ -610,7 +610,7 @@ import type {
   ResponsiveTransformSummary,
   ResponsiveTargetPreset,
 } from '../../shared/types'
-import { VIEWPORTS, applyResponsiveEngine, detectScreenArchetype, safeChildren } from './responsiveEngine'
+import { VIEWPORTS, applyResponsiveEngine, detectScreenArchetype, safeChildren, convertWithRLM } from './responsiveEngine'
 
 export function getResponsivePreview(
   selection: readonly SceneNode[],
@@ -720,8 +720,13 @@ export async function applyResponsiveTransform(
   clone.x = originalNode.x + origWidth + offsetX
   clone.y = originalNode.y + offsetY
 
-  // Delegate to the true responsive layout engine
-  await applyResponsiveEngine(clone, presetId, changeLog)
+  // Delegate to the true responsive layout engine (RLM Universal Pipeline with graceful fallback)
+  try {
+    await convertWithRLM(clone, presetId, changeLog)
+  } catch (rlmErr) {
+    console.warn('[ResponsiveTransform] RLM fallback to legacy pipeline:', rlmErr)
+    await applyResponsiveEngine(clone, presetId, changeLog)
+  }
 
   figma.currentPage.selection = [clone]
   figma.viewport.scrollAndZoomIntoView([clone])
