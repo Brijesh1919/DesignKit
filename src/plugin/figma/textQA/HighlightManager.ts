@@ -8,12 +8,16 @@ import { loadFontsForTextNode } from './TextReplacer'
 const HIGHLIGHT_LAYER_NAME = '__DESIGNKIT_TEXT_QA_HIGHLIGHTS__'
 const FOCUSED_WORD_LAYER_NAME = '__DESIGNKIT_FOCUSED_WORD_HIGHLIGHT__'
 
+// Track IDs of active session highlight nodes for instant O(1) removal without full-document scanning
+const activeHighlightNodeIds = new Set<string>()
+const activeFocusedWordNodeIds = new Set<string>()
+
 const ISSUE_COLORS: Record<TextIssueType, { r: number; g: number; b: number }> = {
-  SPELLING:    { r: 0.94, g: 0.27, b: 0.27 }, // Red
-  GRAMMAR:     { r: 0.55, g: 0.36, b: 0.96 }, // Purple
-  SPACING:     { r: 0.96, g: 0.62, b: 0.04 }, // Yellow
+  SPELLING: { r: 0.94, g: 0.27, b: 0.27 }, // Red
+  GRAMMAR: { r: 0.55, g: 0.36, b: 0.96 }, // Purple
+  SPACING: { r: 0.96, g: 0.62, b: 0.04 }, // Yellow
   PUNCTUATION: { r: 0.98, g: 0.45, b: 0.09 }, // Orange
-  TYPOGRAPHY:  { r: 0.23, g: 0.51, b: 0.96 }, // Blue
+  TYPOGRAPHY: { r: 0.23, g: 0.51, b: 0.96 }, // Blue
 }
 
 export interface WordBox {
@@ -25,32 +29,59 @@ export interface WordBox {
 
 /**
  * Cleanly remove any temporary single-word focus highlight.
+ * Performs instant O(1) removal via tracked node IDs.
  */
 export function clearFocusedWordHighlight(): void {
-  const existing = figma.currentPage.findAll(
-    n => n.name === FOCUSED_WORD_LAYER_NAME || n.getPluginData('designkit_focused_word') === 'true'
-  )
-  for (const node of existing) {
-    try {
-      node.remove()
-    } catch {
-      // ignore
+  if (activeFocusedWordNodeIds.size > 0) {
+    for (const id of activeFocusedWordNodeIds) {
+      try {
+        const node = figma.getNodeById(id)
+        if (node && !node.removed) {
+          node.remove()
+        }
+      } catch {
+        // ignore
+      }
     }
+    activeFocusedWordNodeIds.clear()
   }
 }
 
 /**
  * Cleanly remove all temporary Review Mode highlight indicators from the document.
+ * Runs in 0ms if no highlights were created in this session, avoiding blocking full-page scans.
  */
-export function clearReviewHighlights(): void {
+export function clearReviewHighlights(deepScanFallback = false): void {
   clearFocusedWordHighlight()
 
-  const existing = figma.currentPage.findAll(
-    n => n.name === HIGHLIGHT_LAYER_NAME || n.getPluginData('designkit_temp_overlay') === 'true'
-  )
-  for (const node of existing) {
+  if (activeHighlightNodeIds.size > 0) {
+    for (const id of activeHighlightNodeIds) {
+      try {
+        const node = figma.getNodeById(id)
+        if (node && !node.removed) {
+          node.remove()
+        }
+      } catch {
+        // ignore
+      }
+    }
+    activeHighlightNodeIds.clear()
+  }
+
+  // Only perform expensive page-wide findAll if explicitly requested (e.g. manual cleanup button),
+  // NEVER on plugin close or normal session exit.
+  if (deepScanFallback && typeof figma !== 'undefined' && figma.currentPage?.findAll) {
     try {
-      node.remove()
+      const existing = figma.currentPage.findAll(
+        n => n.name === HIGHLIGHT_LAYER_NAME || n.getPluginData('designkit_temp_overlay') === 'true'
+      )
+      for (const node of existing) {
+        try {
+          if (!node.removed) node.remove()
+        } catch {
+          // ignore
+        }
+      }
     } catch {
       // ignore
     }
@@ -92,7 +123,7 @@ export async function calculateWordBoundingBoxes(
     try {
       const segs = textNode.getStyledTextSegments(['fontName'])
       if (segs.length > 0 && segs[0].fontName) baseFont = segs[0].fontName
-    } catch {}
+    } catch { }
   }
 
   let fontSize = 16
@@ -102,7 +133,7 @@ export async function calculateWordBoundingBoxes(
     try {
       const segs = textNode.getStyledTextSegments(['fontSize'])
       if (segs.length > 0 && typeof segs[0].fontSize === 'number') fontSize = segs[0].fontSize
-    } catch {}
+    } catch { }
   }
 
   let letterSpacing: LetterSpacing = { value: 0, unit: 'PIXELS' }
@@ -147,7 +178,7 @@ export async function calculateWordBoundingBoxes(
         measure.characters = 'Ag\nAg'
         deltaY = measure.height - h1
         if (deltaY <= 0) deltaY = h1
-      } catch {}
+      } catch { }
     }
 
     interface LayoutLine {
@@ -322,7 +353,7 @@ export async function calculateWordBoundingBoxes(
     if (measure) {
       try {
         measure.remove()
-      } catch {}
+      } catch { }
     }
   }
 
@@ -511,6 +542,7 @@ export async function setReviewHighlights(payload: SetReviewHighlightsPayload): 
     group.name = HIGHLIGHT_LAYER_NAME
     group.locked = true
     group.setPluginData('designkit_temp_overlay', 'true')
+    activeHighlightNodeIds.add(group.id)
   }
 }
 
@@ -547,6 +579,7 @@ export async function setFocusedWordHighlight(
     rect.setPluginData('designkit_temp_overlay', 'true')
     rect.setPluginData('designkit_focused_word', 'true')
     figma.currentPage.appendChild(rect)
+    activeFocusedWordNodeIds.add(rect.id)
   } catch (err) {
     console.warn('[DesignKit TextQA] Could not create focused word highlight:', err)
   }

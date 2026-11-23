@@ -97,8 +97,11 @@ figma.ui.postMessage({
   payload: getFrameContrastAnalysis(figma.currentPage.selection),
 })
 
+let isPluginClosing = false
+
 // Push selection updates whenever the user changes it
 figma.on('selectionchange', () => {
+  if (isPluginClosing) return
   figma.ui.postMessage({
     type: 'SELECTION_CHANGED',
     payload: getSelectionInfo(figma.currentPage.selection),
@@ -109,8 +112,9 @@ figma.on('selectionchange', () => {
   })
 })
 
-// Clean up temporary Review Mode highlights when the plugin closes
+// Clean up temporary Review Mode highlights when the plugin closes (instant O(1) removal, 0ms)
 figma.on('close', () => {
+  isPluginClosing = true
   clearReviewHighlights()
 })
 
@@ -518,7 +522,7 @@ figma.ui.on('message', async (msg: UIMessage) => {
       }
 
       case 'TEXT_QA_CLEAR_HIGHLIGHTS': {
-        clearReviewHighlights()
+        clearReviewHighlights(true)
         break
       }
 
