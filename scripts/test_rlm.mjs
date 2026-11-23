@@ -144,11 +144,19 @@ class MockNode {
   }
 }
 
+const mockAppendedNodes = []
+
 globalThis.figma = {
-  createFrame: () => new MockNode('FRAME', 'Frame', 100, 100),
-  createText: () => new MockNode('TEXT', 'Text', 100, 20),
-  createRectangle: () => new MockNode('RECTANGLE', 'Rectangle', 100, 100),
+  createFrame: (name = 'Frame') => new MockNode('FRAME', name, 100, 100),
+  createComponent: (name = 'Component') => new MockNode('COMPONENT', name, 100, 100),
+  createText: (name = 'Text') => new MockNode('TEXT', name, 100, 20),
+  createRectangle: (name = 'Rectangle') => new MockNode('RECTANGLE', name, 100, 100),
   loadFontAsync: async () => true,
+  currentPage: {
+    appendChild: (n) => {
+      mockAppendedNodes.push(n)
+    },
+  },
 }
 
 const {
@@ -591,6 +599,304 @@ await test('A/B Clipping Verification: Content neither overflows nor is clipped 
   assert.strictEqual(title.visible, true, 'Title remains visible')
   assert.strictEqual(btn.visible, true, 'Button remains visible')
   assert.ok(title.width >= 100, `Title width must not be squashed, got ${title.width}px`)
+})
+
+// ---------------------------------------------------------------------
+// TEST 14: Form-Heavy Interface (320px Small Mobile)
+// ---------------------------------------------------------------------
+await test('Form-Heavy Interface: Stacks fields cleanly on 320px without overflow', async () => {
+  const root = new MockNode('FRAME', 'Contact Form Page', 1440, 900)
+  const formCard = new MockNode('FRAME', 'Form Container', 600, 650)
+  formCard.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 }, visible: true }]
+  formCard.cornerRadius = 16
+
+  const title = new MockNode('TEXT', 'Form Title', 500, 32)
+  title.characters = 'Get in Touch With Our Team'
+
+  // Field 1: Name
+  const nameField = new MockNode('FRAME', 'Name Field Group', 500, 72)
+  const nameLabel = new MockNode('TEXT', 'Name Label', 200, 18)
+  nameLabel.characters = 'Full Name'
+  const nameInput = new MockNode('FRAME', 'Name Input Box', 500, 44)
+  nameInput.fills = [{ type: 'SOLID', color: { r: 0.95, g: 0.95, b: 0.95 }, visible: true }]
+  nameInput.strokes = [{ type: 'SOLID', color: { r: 0.8, g: 0.8, b: 0.8 }, visible: true }]
+  nameField.appendChild(nameLabel)
+  nameField.appendChild(nameInput)
+
+  // Field 2: Email
+  const emailField = new MockNode('FRAME', 'Email Field Group', 500, 72)
+  const emailLabel = new MockNode('TEXT', 'Email Label', 200, 18)
+  emailLabel.characters = 'Work Email Address'
+  const emailInput = new MockNode('FRAME', 'Email Input Box', 500, 44)
+  emailInput.fills = [{ type: 'SOLID', color: { r: 0.95, g: 0.95, b: 0.95 }, visible: true }]
+  emailInput.strokes = [{ type: 'SOLID', color: { r: 0.8, g: 0.8, b: 0.8 }, visible: true }]
+  emailField.appendChild(emailLabel)
+  emailField.appendChild(emailInput)
+
+  // Submit button
+  const submitBtn = new MockNode('FRAME', 'Submit Action Button', 200, 48)
+  submitBtn.fills = [{ type: 'SOLID', color: { r: 0.1, g: 0.4, b: 0.9 }, visible: true }]
+  const btnTxt = new MockNode('TEXT', 'Btn Label', 120, 18)
+  btnTxt.characters = 'Send Message'
+  submitBtn.appendChild(btnTxt)
+
+  formCard.appendChild(title)
+  formCard.appendChild(nameField)
+  formCard.appendChild(emailField)
+  formCard.appendChild(submitBtn)
+  root.appendChild(formCard)
+
+  const log = []
+  const audit = await convertWithRLM(root, 'small-mobile', log)
+
+  assert.strictEqual(audit.overflowCount, 0, 'Form must have zero overflow on 320px viewport')
+  assert.ok(formCard.width <= 320, 'Form card width must fit small mobile')
+  assert.strictEqual(nameField.layoutMode, 'VERTICAL', 'Form field must stack label and input vertically')
+})
+
+// ---------------------------------------------------------------------
+// TEST 15: Portfolio Website with Image Gallery (430px Large Mobile)
+// ---------------------------------------------------------------------
+await test('Portfolio Gallery: Reflows 6 artwork tiles with preserved aspect ratios', async () => {
+  const root = new MockNode('FRAME', 'Portfolio Artboard', 1440, 1200)
+  const gallery = new MockNode('FRAME', 'Artwork Grid', 1200, 800)
+
+  // 6 artwork tiles originally 380x280 (aspect ratio ~0.7368)
+  for (let i = 1; i <= 6; i++) {
+    const tile = new MockNode('FRAME', `Project Tile ${i}`, 380, 280)
+    tile.cornerRadius = 12
+    const img = new MockNode('RECTANGLE', `Artwork Image ${i}`, 380, 220)
+    img.fills = [{ type: 'IMAGE', visible: true }]
+    const caption = new MockNode('TEXT', `Caption ${i}`, 340, 20)
+    caption.characters = `Brand Identity & Packaging Design System ${i}`
+    tile.appendChild(img)
+    tile.appendChild(caption)
+    gallery.appendChild(tile)
+  }
+  root.appendChild(gallery)
+
+  const log = []
+  const audit = await convertWithRLM(root, 'mobile-large', log)
+
+  assert.strictEqual(audit.overflowCount, 0, 'Portfolio gallery must not overflow on 430px')
+  assert.strictEqual(audit.textSquashCount, 0, 'Captions must not be squashed')
+  assert.ok(gallery.children[0].width <= 430, 'Tile width fits within 430px')
+})
+
+// ---------------------------------------------------------------------
+// TEST 16: Inline Micro-Row Preservation (Icon + Label & Rating Stars)
+// ---------------------------------------------------------------------
+await test('Inline Micro-Row Preservation: Keeps icon+label and rating rows HORIZONTAL', async () => {
+  const root = new MockNode('FRAME', 'Article Header', 1440, 400)
+
+  // Author byline micro row: Avatar + Name
+  const byline = new MockNode('FRAME', 'Author Byline Micro Row', 240, 40)
+  const avatar = new MockNode('RECTANGLE', 'User Avatar', 36, 36)
+  avatar.fills = [{ type: 'IMAGE', visible: true }]
+  const authorName = new MockNode('TEXT', 'Author Name', 140, 16)
+  authorName.characters = 'Sarah Jenkins, Lead Designer'
+  byline.appendChild(avatar)
+  byline.appendChild(authorName)
+
+  // Star rating micro row: Stars icon + score
+  const ratingRow = new MockNode('FRAME', 'Product Review Rating Stars', 180, 24)
+  const starIcon = new MockNode('VECTOR', 'Star Vector', 20, 20)
+  const reviewScore = new MockNode('TEXT', 'Review Score', 100, 14)
+  reviewScore.characters = '4.9 (1,240 reviews)'
+  ratingRow.appendChild(starIcon)
+  ratingRow.appendChild(reviewScore)
+
+  root.appendChild(byline)
+  root.appendChild(ratingRow)
+
+  const log = []
+  await convertWithRLM(root, 'mobile', log)
+
+  assert.strictEqual(byline.layoutMode, 'HORIZONTAL', 'Author byline micro row must remain HORIZONTAL')
+  assert.strictEqual(ratingRow.layoutMode, 'HORIZONTAL', 'Rating stars row must remain HORIZONTAL')
+})
+
+// ---------------------------------------------------------------------
+// TEST 17: Bidirectional Conversion (Mobile UI -> Tablet UI & Laptop UI)
+// ---------------------------------------------------------------------
+await test('Bidirectional Conversion: Mobile UI -> Tablet UI (390px -> 768px)', async () => {
+  // Mobile source artboard (390px wide)
+  const mobileRoot = new MockNode('FRAME', 'Mobile App Screen', 390, 844)
+  const cardGrid = new MockNode('FRAME', 'Product Grid', 350, 600)
+
+  // 4 product cards
+  for (let i = 1; i <= 4; i++) {
+    const card = new MockNode('FRAME', `Product Card ${i}`, 350, 180)
+    card.cornerRadius = 8
+    const img = new MockNode('RECTANGLE', `Thumb ${i}`, 120, 120)
+    img.fills = [{ type: 'IMAGE', visible: true }]
+    const name = new MockNode('TEXT', `Title ${i}`, 200, 20)
+    name.characters = `Product Item ${i}`
+    card.appendChild(img)
+    card.appendChild(name)
+    cardGrid.appendChild(card)
+  }
+  mobileRoot.appendChild(cardGrid)
+
+  // Convert upwards from Mobile to Tablet (768px)
+  const log = []
+  const audit = await convertWithRLM(mobileRoot, 'tablet', log)
+
+  assert.strictEqual(audit.overflowCount, 0, 'Upward conversion to Tablet must have 0 overflow')
+  assert.strictEqual(mobileRoot.width, 768, 'Artboard expanded to tablet width (768px)')
+})
+
+// ---------------------------------------------------------------------
+// TEST 18: Arbitrary Custom Numeric Target Width (375px Viewport)
+// ---------------------------------------------------------------------
+await test('Arbitrary Numeric Target Width: Accepts 375px and computes custom bounds', async () => {
+  const root = new MockNode('FRAME', 'Custom Width Test', 1440, 800)
+  const hero = new MockNode('FRAME', 'Hero Section', 1440, 500)
+  const h1 = new MockNode('TEXT', 'Main Heading', 700, 48)
+  h1.characters = 'Design Systems Built for Speed and Scalability'
+  const p = new MockNode('TEXT', 'Subtitle Paragraph', 600, 24)
+  p.characters = 'Empower your product team with pre-built responsive tokens.'
+  hero.appendChild(h1)
+  hero.appendChild(p)
+  root.appendChild(hero)
+
+  const log = []
+  // Pass raw number 375 directly
+  const audit = await convertWithRLM(root, 375, log)
+
+  assert.strictEqual(audit.overflowCount, 0, 'Zero overflow on custom 375px viewport')
+  assert.strictEqual(audit.textSquashCount, 0, 'Zero text squashing on custom 375px viewport')
+  assert.strictEqual(root.width, 375, 'Artboard resized to exact custom width 375px')
+})
+
+// ---------------------------------------------------------------------
+// TEST 19: Navbar Mobile Conversion (Hamburger Icon & Centered Frames & Image Fit Content)
+// ---------------------------------------------------------------------
+await test('Navbar Mobile Conversion: Adds hamburger menu, centers content frames, and sets image scaleMode = FIT', async () => {
+  const root = new MockNode('FRAME', 'Landing Page', 1440, 1000)
+
+  // 1. Desktop Navigation Bar
+  const navBar = new MockNode('FRAME', 'Main Navigation Bar', 1440, 72)
+  const brand = new MockNode('TEXT', 'Brand Logo', 140, 32)
+  brand.characters = 'PoshXcessories'
+  const link1 = new MockNode('TEXT', 'Link1', 80, 20)
+  link1.characters = 'Featured'
+  const link2 = new MockNode('TEXT', 'Link2', 80, 20)
+  link2.characters = 'Products'
+  const loginBtn = new MockNode('FRAME', 'Login Btn', 100, 40)
+  loginBtn.fills = [{ type: 'SOLID', color: { r: 0.2, g: 0.4, b: 0.9 }, visible: true }]
+  const btnTxt = new MockNode('TEXT', 'Btn Text', 60, 18)
+  btnTxt.characters = 'Log In'
+  loginBtn.appendChild(btnTxt)
+
+  navBar.appendChild(brand)
+  navBar.appendChild(link1)
+  navBar.appendChild(link2)
+  navBar.appendChild(loginBtn)
+  root.appendChild(navBar)
+
+  // 2. Content Section with Image
+  const contentSection = new MockNode('FRAME', 'Product Showcase Section', 1440, 500)
+  const productImg = new MockNode('RECTANGLE', 'Product Photo', 600, 400)
+  productImg.fills = [{ type: 'IMAGE', scaleMode: 'CROP', visible: true }]
+  const productDesc = new MockNode('TEXT', 'Desc', 400, 24)
+  productDesc.characters = 'High quality customized executive gifts.'
+  contentSection.appendChild(productImg)
+  contentSection.appendChild(productDesc)
+  root.appendChild(contentSection)
+
+  const log = []
+  await convertWithRLM(root, 'mobile', log)
+
+  // 1. Verify Root is Centered
+  assert.strictEqual(root.counterAxisAlignItems, 'CENTER', 'Root counterAxisAlignItems must be CENTER')
+  assert.strictEqual(contentSection.counterAxisAlignItems, 'CENTER', 'Content section counterAxisAlignItems must be CENTER')
+
+  // 2. Verify Image scaleMode is FIT (Fit Content, not crop)
+  const imgFill = productImg.fills.find(f => f.type === 'IMAGE')
+  assert.ok(imgFill, 'Product image must have an IMAGE fill')
+  assert.strictEqual(imgFill.scaleMode, 'FIT', 'Image scaleMode must be FIT (Fit Content, not CROP)')
+
+  // 3. Verify Navbar has Hamburger Menu
+  const hasHamburger = navBar.children.some(c => c.name.toLowerCase().includes('hamburger') || c.name.toLowerCase().includes('menu'))
+  assert.ok(hasHamburger, 'Mobile navbar must contain a Hamburger Menu icon')
+  assert.strictEqual(navBar.height, 56, 'Mobile navbar height must be 56px')
+  assert.strictEqual(navBar.primaryAxisAlignItems, 'SPACE_BETWEEN', 'Navbar must space brand and hamburger between')
+
+  // 4. Verify Mobile Menu Component Frame was created beside artboard
+  const menuComp = mockAppendedNodes.find(n => n.name.includes('Mobile Menu Component'))
+  assert.ok(menuComp, 'A separate Mobile Menu Component must be created and added to the page')
+  assert.strictEqual(menuComp.width, 390, 'Mobile Menu Component width must match mobile viewport (390px)')
+})
+
+// ---------------------------------------------------------------------
+// TEST 20: Full Usable 350px Width & Proper Multi-Card Reflow on 390px Mobile Viewport
+// ---------------------------------------------------------------------
+await test('Content Width & Sizing: Inner content expands to fill 350px usable width & tall desktop header detected', async () => {
+  const root = new MockNode('FRAME', 'Ecommerce Storefront', 1440, 1400)
+
+  // 1. Tall Desktop Multi-Row Header (220px tall)
+  const header = new MockNode('FRAME', 'Site Header Container', 1440, 220)
+  const logo = new MockNode('TEXT', 'Brand Logo', 160, 36)
+  logo.characters = 'PoshXcessories'
+  const searchInput = new MockNode('FRAME', 'Header Search Box', 400, 44)
+  const linkAbout = new MockNode('TEXT', 'Link About', 80, 20)
+  linkAbout.characters = 'About us'
+  const linkTrack = new MockNode('TEXT', 'Link Track', 90, 20)
+  linkTrack.characters = 'Track order'
+  const linkContact = new MockNode('TEXT', 'Link Contact', 90, 20)
+  linkContact.characters = 'Contact us'
+  header.appendChild(logo)
+  header.appendChild(searchInput)
+  header.appendChild(linkAbout)
+  header.appendChild(linkTrack)
+  header.appendChild(linkContact)
+  root.appendChild(header)
+
+  // 2. Hero Section
+  const heroSection = new MockNode('FRAME', 'Hero Section', 1440, 480)
+  const heading = new MockNode('TEXT', 'Hero Headline', 680, 48)
+  heading.characters = 'Award-Winning Promotional Accessories'
+  const subhead = new MockNode('TEXT', 'Hero Subtitle', 600, 24)
+  subhead.characters = 'Premium branded items engineered to make your company stand out.'
+  heroSection.appendChild(heading)
+  heroSection.appendChild(subhead)
+  root.appendChild(heroSection)
+
+  // 3. Multi-Column Spec / Data Table (4 columns on desktop)
+  const specSection = new MockNode('FRAME', 'Shipping Packaging Specs', 1440, 240)
+  const specRow = new MockNode('FRAME', 'Spec Row 1', 1440, 100)
+  const col1 = new MockNode('FRAME', 'Col Carton Weight', 240, 80)
+  const col2 = new MockNode('FRAME', 'Col Dimensions', 240, 80)
+  const col3 = new MockNode('FRAME', 'Col Case Pack', 240, 80)
+  const col4 = new MockNode('FRAME', 'Col FOB Point', 240, 80)
+  specRow.appendChild(col1)
+  specRow.appendChild(col2)
+  specRow.appendChild(col3)
+  specRow.appendChild(col4)
+  specSection.appendChild(specRow)
+  root.appendChild(specSection)
+
+  const log = []
+  await convertWithRLM(root, 'mobile', log)
+
+  // A. Verify Tall Desktop Header was recognized and converted to 56px mobile navbar
+  assert.strictEqual(header.height, 56, 'Tall 220px desktop header must be transformed to compact 56px mobile navbar')
+  const hasHamburger = header.children.some(c => c.name.toLowerCase().includes('hamburger'))
+  assert.ok(hasHamburger, 'Mobile navbar must contain a hamburger icon')
+
+  // B. Verify Content Sections Span 390px with 20px padding (usable width = 350px)
+  assert.strictEqual(heroSection.width, 390, 'Hero section must span 390px')
+  assert.strictEqual(heroSection.paddingLeft, 20, 'Hero section must have 20px left padding')
+  assert.strictEqual(heroSection.paddingRight, 20, 'Hero section must have 20px right padding')
+
+  // C. Verify Text Elements Fill the 350px Usable Width (No 310px double-subtraction!)
+  assert.strictEqual(heading.width, 350, 'Heading must fill the 350px usable width')
+  assert.strictEqual(subhead.width, 350, 'Subtitle must fill the 350px usable width')
+
+  // D. Verify Spec Section wrapped columns on mobile so cells are at least 140px
+  assert.strictEqual(specSection.width, 390, 'Spec section must span 390px')
+  assert.ok(col1.width >= 140, `Spec column width (${col1.width}px) must be >= 140px on mobile to prevent vertical letter squashing`)
 })
 
 console.log(`\n========================================`)

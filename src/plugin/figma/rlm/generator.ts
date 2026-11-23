@@ -86,10 +86,12 @@ export async function applyRLMNodeToFigma(
 
       if (rlm.intent.textAutoResize) {
         textNode.textAutoResize = rlm.intent.textAutoResize
-        if (rlm.intent.textAutoResize === 'HEIGHT' && textNode.width > vp.width) {
-          const fitW = Math.max(120, vp.width - vp.padding * 2)
-          if ('resize' in textNode) {
-            (textNode as any).resize(fitW, textNode.height)
+        if (rlm.intent.textAutoResize === 'HEIGHT') {
+          const fitW = rlm.intent.targetWidth || Math.max(120, vp.width - vp.padding * 2)
+          if ('resize' in textNode && fitW > 0) {
+            try {
+              (textNode as any).resize(fitW, textNode.height)
+            } catch (_) { }
           }
         }
       }
@@ -115,6 +117,9 @@ export async function applyRLMNodeToFigma(
 
         if ('layoutWrap' in frame && rlm.intent.layoutWrap) {
           (frame as any).layoutWrap = rlm.intent.layoutWrap
+          if (rlm.intent.layoutWrap === 'WRAP' && 'counterAxisSpacing' in frame) {
+            (frame as any).counterAxisSpacing = rlm.intent.itemSpacing
+          }
         }
 
         // Alignments
@@ -128,7 +133,7 @@ export async function applyRLMNodeToFigma(
           frame.primaryAxisAlignItems = 'MIN'
         }
 
-        if (rlm.intent.alignItems === 'CENTER') {
+        if (rlm.intent.alignItems === 'CENTER' || rlm.role === 'ROOT') {
           frame.counterAxisAlignItems = 'CENTER'
         } else if (rlm.intent.alignItems === 'MAX') {
           frame.counterAxisAlignItems = 'MAX'
@@ -168,6 +173,7 @@ export async function applyRLMNodeToFigma(
 
       // Align and size direct children inside Auto Layout
       if (rlm.intent.layoutMode !== 'NONE') {
+        const innerUsableW = Math.max(100, frame.width - (frame.paddingLeft || 0) - (frame.paddingRight || 0))
         for (const childRLM of rlm.children) {
           const childNode = childRLM.figmaNodeRef
           if (childNode && !childRLM.intent.isAbsoluteInAutoLayout) {
@@ -177,6 +183,22 @@ export async function applyRLMNodeToFigma(
               }
               if ('layoutSizingHorizontal' in childNode) {
                 (childNode as any).layoutSizingHorizontal = childRLM.intent.horizontalSizing
+              }
+              if ('layoutSizingVertical' in childNode && childRLM.intent.verticalSizing) {
+                (childNode as any).layoutSizingVertical = childRLM.intent.verticalSizing
+              }
+
+              // Explicitly size FILL children so canvas updates immediately without waiting for AL re-eval
+              if (childRLM.intent.horizontalSizing === 'FILL' && 'resize' in childNode && !childRLM.isVectorIcon) {
+                const fillW = childRLM.intent.targetWidth || (frame.layoutMode === 'VERTICAL' ? innerUsableW : childNode.width)
+                if (fillW > 0) {
+                  try {
+                    (childNode as any).resize(fillW, childNode.height)
+                  } catch (_) { }
+                }
+              } else if (childRLM.intent.horizontalSizing === 'FIXED' && childRLM.intent.targetWidth && 'resize' in childNode) {
+                const curH = childRLM.intent.targetHeight || childNode.height
+                childNode.resize(childRLM.intent.targetWidth, curH)
               }
             } catch (_) { }
           }
@@ -197,6 +219,22 @@ export async function applyRLMNodeToFigma(
     applyCornerRadiiToNode(activeNode, rlm.style.cornerRadii)
     if ('clipsContent' in activeNode && rlm.style.cornerRadii.tl > 0) {
       (activeNode as any).clipsContent = true
+    }
+
+    // Fit Content: Ensure image fills use scaleMode = 'FIT' so images are never cropped
+    if ('fills' in activeNode && Array.isArray((activeNode as any).fills)) {
+      try {
+        const updatedFills = (activeNode as any).fills.map((f: Paint) => {
+          if (f.type === 'IMAGE') {
+            return {
+              ...f,
+              scaleMode: 'FIT',
+            }
+          }
+          return f
+        })
+        ;(activeNode as any).fills = updatedFills
+      } catch (_) { }
     }
   }
 

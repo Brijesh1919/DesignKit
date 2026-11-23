@@ -50,6 +50,29 @@ export function clampCornerRadius(
 }
 
 /**
+ * Calculates optimal number of columns based on available container width,
+ * minimum acceptable card width, and inter-card gap.
+ * Works dynamically across any screen size (Mobile, Tablet, Desktop, or custom).
+ */
+export function calculateOptimalColumns(
+  availableWidth: number,
+  minCardWidth: number,
+  gap: number,
+  maxCols = 4
+): number {
+  if (availableWidth < minCardWidth) return 1
+  const cols = Math.floor((availableWidth + gap) / (minCardWidth + gap))
+  return Math.max(1, Math.min(cols, maxCols))
+}
+
+function hasCardStyle(node: RLMNode): boolean {
+  const hasFill = node.style.fills.some(f => f.visible !== false)
+  const hasStroke = node.style.strokes.some(s => s.visible !== false)
+  const hasRadius = node.style.cornerRadii.tl >= 4
+  return (hasFill || hasStroke) && hasRadius && node.geometry.width <= 600
+}
+
+/**
  * Intelligent clipping policy.
  * Only enables clipping when strictly required (rounded border containment, scrollable data).
  * Never clips standard content frames to avoid hiding overflowing text or button descenders.
@@ -81,7 +104,7 @@ export function planResponsiveLayout(
     targetWidth: vp.width,
     itemSpacing: vp.rowGap,
     padding: { top: 0, right: 0, bottom: vp.padding * 2, left: 0 },
-    alignItems: 'MIN',
+    alignItems: 'CENTER',
     justifyContent: 'MIN',
     preserveInstance: false,
     isAbsoluteInAutoLayout: false,
@@ -99,7 +122,7 @@ export function planResponsiveLayout(
       br: clampCornerRadius(r.br, node.geometry.width, node.geometry.height, isPill),
     }
 
-    // 1. Proportional Image / Media Handling
+    // 1. Proportional Image / Media Handling (Fit Content: Natural Aspect Ratio, Never Cropped)
     if (node.isImage || node.role === 'CARD_MEDIA') {
       const origW = Math.max(1, node.geometry.width)
       const origH = Math.max(1, node.geometry.height)
@@ -108,8 +131,8 @@ export function planResponsiveLayout(
       node.intent.aspectRatio = aspect
 
       const targetImgW = isInsideCard ? availableWidth : Math.min(availableWidth, vp.width)
-      const clampedAspect = isInsideCard ? Math.min(Math.max(aspect, 0.75), 1.25) : aspect
-      const targetImgH = Math.min(Math.round(targetImgW * clampedAspect), isInsideCard ? 260 : 450)
+      // Natural aspect ratio calculation ensures image is never cropped or distorted
+      const targetImgH = Math.round(targetImgW * aspect)
 
       node.intent = {
         layoutMode: 'NONE',
@@ -119,8 +142,8 @@ export function planResponsiveLayout(
         targetHeight: targetImgH,
         itemSpacing: 0,
         padding: { top: 0, right: 0, bottom: 0, left: 0 },
-        alignItems: 'MIN',
-        justifyContent: 'MIN',
+        alignItems: 'CENTER',
+        justifyContent: 'CENTER',
         preserveInstance: node.isInstance,
         isAbsoluteInAutoLayout: false,
         clipsContent: node.style.cornerRadii.tl > 0,
@@ -187,6 +210,7 @@ export function planResponsiveLayout(
       }
 
       case 'HERO_SECTION': {
+        const innerW = Math.max(120, availableWidth - vp.padding * 2)
         node.intent = {
           layoutMode: 'VERTICAL',
           horizontalSizing: 'FILL',
@@ -194,18 +218,19 @@ export function planResponsiveLayout(
           targetWidth: availableWidth,
           itemSpacing: 18,
           padding: { top: 20, right: vp.padding, bottom: 24, left: vp.padding },
-          alignItems: 'MIN',
+          alignItems: 'CENTER',
           justifyContent: 'MIN',
           preserveInstance: false,
           isAbsoluteInAutoLayout: false,
         }
         for (const child of node.children) {
-          planNode(child, availableWidth - vp.padding * 2, false)
+          planNode(child, innerW, false)
         }
         break
       }
 
       case 'TRUST_BADGES': {
+        const innerW = Math.max(120, availableWidth - vp.padding * 2)
         node.intent = {
           layoutMode: 'HORIZONTAL',
           layoutWrap: 'WRAP',
@@ -220,29 +245,36 @@ export function planResponsiveLayout(
           isAbsoluteInAutoLayout: false,
         }
         for (const child of node.children) {
-          planNode(child, availableWidth - vp.padding * 2, false)
+          planNode(child, innerW, false)
         }
         break
       }
 
       case 'DATA_TABLE': {
+        const innerW = Math.max(120, availableWidth - vp.padding * 2)
         node.intent = {
           layoutMode: 'VERTICAL',
           horizontalSizing: 'FILL',
           verticalSizing: 'HUG',
           targetWidth: availableWidth,
-          itemSpacing: 2,
-          padding: { top: 8, right: 0, bottom: 8, left: 0 },
-          alignItems: 'MIN',
+          itemSpacing: 8,
+          padding: { top: 8, right: vp.padding, bottom: 8, left: vp.padding },
+          alignItems: 'CENTER',
           justifyContent: 'MIN',
           preserveInstance: false,
           isAbsoluteInAutoLayout: false,
         }
         for (const row of node.children) {
+          const rowColCount = Math.max(1, row.children.length)
+          const cols = calculateOptimalColumns(innerW, 130, 8, Math.min(2, rowColCount))
+          const itemW = cols > 1 ? Math.floor((innerW - (cols - 1) * 8) / cols) : innerW
+
           row.intent = {
-            layoutMode: 'HORIZONTAL',
+            layoutMode: cols > 1 ? 'HORIZONTAL' : 'VERTICAL',
+            layoutWrap: cols > 1 ? 'WRAP' : 'NO_WRAP',
             horizontalSizing: 'FILL',
             verticalSizing: 'HUG',
+            targetWidth: innerW,
             itemSpacing: 8,
             padding: { top: 6, right: 8, bottom: 6, left: 8 },
             alignItems: 'CENTER',
@@ -251,33 +283,50 @@ export function planResponsiveLayout(
             isAbsoluteInAutoLayout: false,
           }
           for (const cell of row.children) {
-            planNode(cell, availableWidth / Math.max(1, row.children.length), false)
+            planNode(cell, itemW, false)
+            if (cols > 1) {
+              cell.intent.horizontalSizing = 'FIXED'
+              cell.intent.targetWidth = itemW
+            } else {
+              cell.intent.horizontalSizing = 'FILL'
+              cell.intent.targetWidth = innerW
+            }
           }
         }
         break
       }
 
       case 'METRIC_CARD_GROUP': {
-        const cols = (availableWidth >= 320 && node.children.length >= 2) ? 2 : 1
-        const itemW = cols === 2
-          ? Math.floor((availableWidth - vp.colGap) / 2)
-          : availableWidth
+        const innerW = Math.max(120, availableWidth - vp.padding * 2)
+        const maxCols = vp.width >= 1024 ? 4 : vp.width >= 768 ? 3 : 2
+        const cols = calculateOptimalColumns(innerW, 120, vp.colGap, maxCols)
+        const itemW = cols > 1
+          ? Math.floor((innerW - (cols - 1) * vp.colGap) / cols)
+          : innerW
 
         node.intent = {
-          layoutMode: 'VERTICAL',
+          layoutMode: cols > 1 ? 'HORIZONTAL' : 'VERTICAL',
+          layoutWrap: cols > 1 ? 'WRAP' : 'NO_WRAP',
           horizontalSizing: 'FILL',
           verticalSizing: 'HUG',
           targetWidth: availableWidth,
           itemSpacing: vp.colGap,
-          padding: { top: 8, right: 0, bottom: 8, left: 0 },
-          alignItems: 'MIN',
-          justifyContent: 'MIN',
+          padding: { top: 8, right: vp.padding, bottom: 8, left: vp.padding },
+          alignItems: 'CENTER',
+          justifyContent: 'CENTER',
           preserveInstance: false,
           isAbsoluteInAutoLayout: false,
           columns: cols,
         }
         for (const child of node.children) {
           planNode(child, itemW, true)
+          if (cols > 1) {
+            child.intent.horizontalSizing = 'FIXED'
+            child.intent.targetWidth = itemW
+          } else {
+            child.intent.horizontalSizing = 'FILL'
+            child.intent.targetWidth = innerW
+          }
         }
         break
       }
@@ -320,6 +369,159 @@ export function planResponsiveLayout(
         break
       }
 
+      case 'INLINE_MICRO_ROW': {
+        node.intent = {
+          layoutMode: 'HORIZONTAL',
+          horizontalSizing: 'HUG',
+          verticalSizing: 'HUG',
+          itemSpacing: 8,
+          padding: { top: 0, right: 0, bottom: 0, left: 0 },
+          alignItems: 'CENTER',
+          justifyContent: 'MIN',
+          preserveInstance: node.isInstance,
+          isAbsoluteInAutoLayout: false,
+        }
+        for (const child of node.children) {
+          if (child.typography) {
+            child.intent = {
+              layoutMode: 'NONE',
+              horizontalSizing: 'HUG',
+              verticalSizing: 'HUG',
+              textAutoResize: 'WIDTH_AND_HEIGHT',
+              itemSpacing: 0,
+              padding: { top: 0, right: 0, bottom: 0, left: 0 },
+              alignItems: 'MIN',
+              justifyContent: 'MIN',
+              preserveInstance: false,
+              isAbsoluteInAutoLayout: false,
+            }
+          } else {
+            child.intent = {
+              layoutMode: 'NONE',
+              horizontalSizing: 'FIXED',
+              verticalSizing: 'FIXED',
+              targetWidth: child.geometry.width,
+              targetHeight: child.geometry.height,
+              itemSpacing: 0,
+              padding: { top: 0, right: 0, bottom: 0, left: 0 },
+              alignItems: 'MIN',
+              justifyContent: 'MIN',
+              preserveInstance: child.isInstance,
+              isAbsoluteInAutoLayout: false,
+            }
+          }
+        }
+        break
+      }
+
+      case 'INPUT_GROUP': {
+        const canFitHorizontal = availableWidth >= 280
+        node.intent = {
+          layoutMode: canFitHorizontal ? 'HORIZONTAL' : 'VERTICAL',
+          horizontalSizing: 'FILL',
+          verticalSizing: 'HUG',
+          targetWidth: availableWidth,
+          itemSpacing: 8,
+          padding: { top: 0, right: 0, bottom: 0, left: 0 },
+          alignItems: canFitHorizontal ? 'CENTER' : 'MIN',
+          justifyContent: 'MIN',
+          preserveInstance: false,
+          isAbsoluteInAutoLayout: false,
+        }
+        for (const child of node.children) {
+          const isBtn = child.role === 'BUTTON_PRIMARY' || child.role === 'BUTTON_SECONDARY' || /(btn|button|submit)/i.test(child.name)
+          if (isBtn) {
+            planNode(child, availableWidth, false)
+            if (canFitHorizontal) {
+              child.intent.horizontalSizing = 'HUG'
+            } else {
+              child.intent.horizontalSizing = 'FILL'
+            }
+          } else {
+            child.intent = {
+              layoutMode: 'HORIZONTAL',
+              horizontalSizing: 'FILL',
+              verticalSizing: 'FIXED',
+              targetHeight: 44,
+              itemSpacing: 8,
+              padding: { top: 8, right: 12, bottom: 8, left: 12 },
+              alignItems: 'CENTER',
+              justifyContent: 'MIN',
+              preserveInstance: false,
+              isAbsoluteInAutoLayout: false,
+            }
+            for (const inputKid of child.children) {
+              planNode(inputKid, availableWidth - 24, false)
+            }
+          }
+        }
+        break
+      }
+
+      case 'FORM_FIELD': {
+        node.intent = {
+          layoutMode: 'VERTICAL',
+          horizontalSizing: 'FILL',
+          verticalSizing: 'HUG',
+          targetWidth: availableWidth,
+          itemSpacing: 6,
+          padding: { top: 0, right: 0, bottom: 0, left: 0 },
+          alignItems: 'MIN',
+          justifyContent: 'MIN',
+          preserveInstance: false,
+          isAbsoluteInAutoLayout: false,
+        }
+        for (const child of node.children) {
+          if (child.typography && child.geometry.height <= 30) {
+            child.intent = {
+              layoutMode: 'NONE',
+              horizontalSizing: 'FILL',
+              verticalSizing: 'HUG',
+              textAutoResize: 'HEIGHT',
+              itemSpacing: 0,
+              padding: { top: 0, right: 0, bottom: 0, left: 0 },
+              alignItems: 'MIN',
+              justifyContent: 'MIN',
+              preserveInstance: false,
+              isAbsoluteInAutoLayout: false,
+            }
+          } else {
+            child.intent = {
+              layoutMode: 'HORIZONTAL',
+              horizontalSizing: 'FILL',
+              verticalSizing: 'FIXED',
+              targetHeight: Math.max(40, child.geometry.height),
+              itemSpacing: 8,
+              padding: { top: 8, right: 12, bottom: 8, left: 12 },
+              alignItems: 'CENTER',
+              justifyContent: 'MIN',
+              preserveInstance: false,
+              isAbsoluteInAutoLayout: false,
+            }
+          }
+        }
+        break
+      }
+
+      case 'CARD': {
+        node.intent = {
+          layoutMode: 'VERTICAL',
+          horizontalSizing: isInsideCard ? 'FIXED' : 'FILL',
+          verticalSizing: 'HUG',
+          targetWidth: availableWidth,
+          itemSpacing: 10,
+          padding: { top: 12, right: 12, bottom: 12, left: 12 },
+          alignItems: 'MIN',
+          justifyContent: 'MIN',
+          preserveInstance: node.isInstance,
+          isAbsoluteInAutoLayout: node.style.layoutPositioning === 'ABSOLUTE',
+        }
+        for (const child of node.children) {
+          planNode(child, availableWidth - 24, true)
+        }
+        break
+      }
+
       case 'BUTTON_PRIMARY':
       case 'BUTTON_SECONDARY': {
         node.intent = {
@@ -340,21 +542,23 @@ export function planResponsiveLayout(
       }
 
       case 'PRODUCT_GRID': {
-        // Multi-column cards
-        const cols = (availableWidth >= 320 && node.children.length >= 2) ? 2 : 1
-        const itemW = cols === 2
-          ? Math.floor((availableWidth - vp.colGap) / 2)
-          : availableWidth
+        const innerW = Math.max(120, availableWidth - vp.padding * 2)
+        const maxCols = vp.width >= 1024 ? 4 : vp.width >= 768 ? 3 : 2
+        const cols = calculateOptimalColumns(innerW, 140, vp.colGap, maxCols)
+        const itemW = cols > 1
+          ? Math.floor((innerW - (cols - 1) * vp.colGap) / cols)
+          : innerW
 
         node.intent = {
-          layoutMode: 'VERTICAL',
+          layoutMode: cols > 1 ? 'HORIZONTAL' : 'VERTICAL',
+          layoutWrap: cols > 1 ? 'WRAP' : 'NO_WRAP',
           horizontalSizing: 'FILL',
           verticalSizing: 'HUG',
           targetWidth: availableWidth,
           itemSpacing: vp.colGap,
-          padding: { top: 0, right: 0, bottom: 0, left: 0 },
-          alignItems: 'MIN',
-          justifyContent: 'MIN',
+          padding: { top: 12, right: vp.padding, bottom: 12, left: vp.padding },
+          alignItems: 'CENTER',
+          justifyContent: 'CENTER',
           preserveInstance: false,
           isAbsoluteInAutoLayout: false,
           columns: cols,
@@ -362,6 +566,13 @@ export function planResponsiveLayout(
 
         for (const child of node.children) {
           planNode(child, itemW, true)
+          if (cols > 1) {
+            child.intent.horizontalSizing = 'FIXED'
+            child.intent.targetWidth = itemW
+          } else {
+            child.intent.horizontalSizing = 'FILL'
+            child.intent.targetWidth = innerW
+          }
         }
         break
       }
@@ -477,24 +688,28 @@ export function planResponsiveLayout(
       }
 
       default: {
-        // Generic containers or cards
-        const isCard = isInsideCard || node.style.fills.length > 0 || node.style.cornerRadii.tl > 0
+        // Generic containers or wrappers
+        const isCard = isInsideCard || (hasCardStyle(node) && node.children.length >= 2)
+        const isCentered = node.children.some(c => c.typography?.textAlignHorizontal === 'CENTER')
+        const padX = isCard ? 12 : (isInsideCard ? 0 : vp.padding)
+        const innerW = Math.max(100, availableWidth - padX * 2)
         node.intent = {
           layoutMode: 'VERTICAL',
           horizontalSizing: 'FILL',
           verticalSizing: 'HUG',
           targetWidth: availableWidth,
           itemSpacing: isCard ? 10 : 16,
+          // CRUCIAL FOR PREVENTING DOUBLE MARGINS: Only add padding if it's a styled card or top section!
           padding: isCard
             ? { top: 12, right: 12, bottom: 12, left: 12 }
-            : { top: 0, right: 0, bottom: 0, left: 0 },
-          alignItems: 'MIN',
-          justifyContent: 'MIN',
+            : (isInsideCard ? { top: 0, right: 0, bottom: 0, left: 0 } : { top: 16, right: vp.padding, bottom: 16, left: vp.padding }),
+          alignItems: isCentered ? 'CENTER' : 'MIN',
+          justifyContent: isCentered ? 'CENTER' : 'MIN',
           preserveInstance: node.isInstance,
           isAbsoluteInAutoLayout: node.style.layoutPositioning === 'ABSOLUTE',
         }
         for (const child of node.children) {
-          planNode(child, availableWidth - (isCard ? 24 : 0), isCard)
+          planNode(child, innerW, isCard)
         }
         break
       }
@@ -508,8 +723,17 @@ export function planResponsiveLayout(
 
   // Plan all children of root
   for (const section of root.children) {
+    planNode(section, vp.width, false)
+
     const isFullBleed = section.role === 'ANNOUNCEMENT_BAR' || section.role === 'NAVIGATION_BAR' || section.role === 'FOOTER'
-    const sectionWidth = isFullBleed ? vp.width : contentWidth
-    planNode(section, sectionWidth, false)
+    if (!isFullBleed) {
+      section.intent.horizontalSizing = 'FILL'
+      section.intent.targetWidth = vp.width
+      if (section.intent.padding.left === 0 && section.intent.padding.right === 0) {
+        section.intent.padding.left = vp.padding
+        section.intent.padding.right = vp.padding
+      }
+      section.intent.alignItems = 'CENTER'
+    }
   }
 }

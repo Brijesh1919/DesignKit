@@ -165,22 +165,74 @@ export function classifyAnnouncementBar(node: RLMNode, rootHeight: number): { is
 
 /**
  * Checks if a section is a main navigation bar.
+ * Supports multi-tier desktop headers (height up to 300px with logo, search, and category rows).
  */
 export function classifyNavigationBar(node: RLMNode, rootHeight: number): { isNav: boolean; confidence: number } {
   const name = node.name.toLowerCase()
-  const isNamed = /(nav|header|navbar|site-header|appbar|masthead)/i.test(name)
-  const isNearTop = node.geometry.y <= Math.max(160, rootHeight * 0.25)
-  const isCompactH = node.geometry.height <= 140
+  if (/(hero|banner|footer|promo-bar)/i.test(name)) return { isNav: false, confidence: 0 }
 
-  if (isNamed && isNearTop && isCompactH) return { isNav: true, confidence: 0.92 }
+  const isNamed = /(nav|header|navbar|site-header|appbar|masthead|top-nav|navigation|menu)/i.test(name)
+  const isNearTop = node.geometry.y <= Math.max(300, rootHeight * 0.35)
+  const isReasonableH = node.geometry.height <= 300
 
-  if (isNearTop && isCompactH) {
+  if (isNamed && isNearTop && isReasonableH) return { isNav: true, confidence: 0.95 }
+
+  if (isNearTop && isReasonableH) {
     const hasLogo = node.children.some(c => /(logo|brand)/i.test(c.name))
-    const linkLikeCount = node.children.filter(c => c.typography && c.typography.characters.length <= 25).length
-    if (hasLogo && linkLikeCount >= 2) return { isNav: true, confidence: 0.85 }
+    const linkLikeCount = node.children.filter(c => c.typography && c.typography.characters.length <= 30).length
+    const hasSearch = node.children.some(c => /(search|input|cart|bag)/i.test(c.name))
+    if ((hasLogo || hasSearch) && linkLikeCount >= 2) return { isNav: true, confidence: 0.90 }
+    if (linkLikeCount >= 3) return { isNav: true, confidence: 0.85 }
   }
 
   return { isNav: false, confidence: 0 }
+}
+
+/**
+ * Reliably finds the primary Navigation Bar node in the RLM tree,
+ * searching top-level sections as well as depth-1 children.
+ */
+export function findNavigationRLM(root: RLMNode): RLMNode | undefined {
+  // 1. Direct child classified as NAVIGATION_BAR
+  const direct = root.children.find(c => c.role === 'NAVIGATION_BAR')
+  if (direct) return direct
+
+  // 2. Direct child with navigation/header name near top
+  const named = root.children.find(c =>
+    c.geometry.y <= 320 &&
+    c.geometry.height <= 320 &&
+    /(nav|header|navbar|site-header|appbar|masthead|top-nav|navigation)/i.test(c.name) &&
+    !/(hero|banner|footer|promo|tag|cloud|metric|feature|card|table)/i.test(c.name)
+  )
+  if (named) return named
+
+  // 3. Search first 3 sections for nested nav
+  for (const sec of root.children.slice(0, 3)) {
+    if (sec.role === 'NAVIGATION_BAR') return sec
+    for (const child of sec.children) {
+      if (child.role === 'NAVIGATION_BAR') return child
+      if (
+        child.geometry.y <= 320 &&
+        child.geometry.height <= 320 &&
+        /(nav|header|navbar|site-header|appbar|masthead|top-nav|navigation)/i.test(child.name) &&
+        !/(hero|banner|footer|promo|tag|cloud|metric|feature|card|table)/i.test(child.name)
+      ) {
+        return child
+      }
+    }
+  }
+
+  // 4. Structural check: near top, has logo AND nav links/items
+  const first = root.children[0]
+  if (first && first.geometry.y <= 120 && first.geometry.height <= 300) {
+    const hasLogo = first.children.some(c => /(logo|brand)/i.test(c.name))
+    const hasNavLinks = first.children.some(c => /(nav|link|item|menu)/i.test(c.name))
+    if (hasLogo && hasNavLinks) {
+      return first
+    }
+  }
+
+  return undefined
 }
 
 /**
@@ -284,6 +336,102 @@ export function classifyFooter(node: RLMNode, rootHeight: number): { isFooter: b
 }
 
 /**
+ * Checks if a container is an inline micro row (icon + label, avatar + name, rating stars + score, etc.).
+ * These must REMAIN HORIZONTAL and NEVER be forced to vertical stacking.
+ */
+export function classifyInlineMicroRow(node: RLMNode): { isMicro: boolean; confidence: number } {
+  if (node.children.length < 2 || node.children.length > 5) return { isMicro: false, confidence: 0 }
+  if (node.geometry.height > 52) return { isMicro: false, confidence: 0 }
+
+  const hasIcon = node.children.some(c => c.isVectorIcon || c.isImage || (c.geometry.width <= 36 && c.geometry.height <= 36))
+  const hasText = node.children.some(c => c.typography !== undefined)
+
+  const name = node.name.toLowerCase()
+  const isNamedMicro = /(meta|author|rating|review|stars|icon-label|chip-row|user-info|timestamp|byline|stat-inline)/i.test(name)
+
+  if (isNamedMicro && (hasIcon || hasText)) {
+    return { isMicro: true, confidence: 0.94 }
+  }
+
+  // Avatar + name or icon + label
+  if (node.children.length === 2 && hasIcon && hasText && node.geometry.width <= 320) {
+    return { isMicro: true, confidence: 0.92 }
+  }
+
+  // Star ratings: multiple icons + optional score text
+  const isRating = node.children.every(c => c.isVectorIcon || c.typography !== undefined || c.geometry.width <= 24)
+  if (isRating && node.geometry.width <= 260) {
+    return { isMicro: true, confidence: 0.90 }
+  }
+
+  return { isMicro: false, confidence: 0 }
+}
+
+/**
+ * Checks if a container is an input field with adjacent action button (e.g. search bar, newsletter signup).
+ */
+export function classifyInputGroup(node: RLMNode): { isInputGroup: boolean; confidence: number } {
+  if (node.children.length < 2 || node.children.length > 3) return { isInputGroup: false, confidence: 0 }
+  if (node.geometry.height > 68) return { isInputGroup: false, confidence: 0 }
+
+  const name = node.name.toLowerCase()
+  if (/(search|subscribe|newsletter|input-group|email-form|coupon|promo-code)/i.test(name)) {
+    return { isInputGroup: true, confidence: 0.94 }
+  }
+
+  const hasBtn = node.children.some(c => classifyButton(c).isButton)
+  const hasInput = node.children.some(c => {
+    const kidName = c.name.toLowerCase()
+    return /(input|field|search|email|text|box)/i.test(kidName) || (c.style.fills.length > 0 && c.style.strokes.length > 0)
+  })
+
+  if (hasBtn && hasInput) {
+    return { isInputGroup: true, confidence: 0.90 }
+  }
+
+  return { isInputGroup: false, confidence: 0 }
+}
+
+/**
+ * Checks if a container is a form field (label + input box).
+ */
+export function classifyFormField(node: RLMNode): { isFormField: boolean; confidence: number } {
+  const name = node.name.toLowerCase()
+  if (/(field|form-group|input-row|select-box|input-wrap|text-input)/i.test(name)) {
+    return { isFormField: true, confidence: 0.92 }
+  }
+
+  if (node.children.length >= 2 && node.children.length <= 3 && node.geometry.height <= 120) {
+    const hasLabel = node.children.some(c => c.typography && c.typography.characters.length <= 50)
+    const hasInput = node.children.some(c => c.children.length > 0 || hasVisibleFill(c) || hasVisibleStroke(c))
+    if (hasLabel && hasInput) {
+      return { isFormField: true, confidence: 0.85 }
+    }
+  }
+
+  return { isFormField: false, confidence: 0 }
+}
+
+/**
+ * Checks if a container is an individual card.
+ */
+export function classifyCard(node: RLMNode): { isCard: boolean; confidence: number } {
+  const name = node.name.toLowerCase()
+  if (/(card|tile|product-item|listing|feature-box|pricing-tier)/i.test(name) && !/(grid|list|container|wrapper|section)/i.test(name)) {
+    return { isCard: true, confidence: 0.92 }
+  }
+
+  const hasCardStyle = (hasVisibleFill(node) || hasVisibleStroke(node)) && (node.style.cornerRadii.tl >= 4 || node.style.strokes.length > 0)
+  const hasCardDims = node.geometry.width >= 100 && node.geometry.width <= 600 && node.geometry.height >= 80 && node.geometry.height <= 850
+
+  if (hasCardStyle && hasCardDims && node.children.length >= 2) {
+    return { isCard: true, confidence: 0.86 }
+  }
+
+  return { isCard: false, confidence: 0 }
+}
+
+/**
  * Checks if a container is a Tag Cloud (horizontal collection of badges/pills).
  */
 export function classifyTagCloud(node: RLMNode): { isTagCloud: boolean; confidence: number } {
@@ -321,7 +469,7 @@ export function computeRLMSimilarity(a: RLMNode, b: RLMNode): number {
  */
 export function classifyProductGrid(node: RLMNode): { isGrid: boolean; confidence: number } {
   const cards = node.children.filter(c => c.children.length >= 1 && c.geometry.width >= 100)
-  if (cards.length < 3) return { isGrid: false, confidence: 0 }
+  if (cards.length < 2) return { isGrid: false, confidence: 0 }
 
   let totalSim = 0
   let pairs = 0
@@ -332,10 +480,10 @@ export function classifyProductGrid(node: RLMNode): { isGrid: boolean; confidenc
   }
   const avgSim = pairs > 0 ? totalSim / pairs : 0
 
-  if (avgSim >= 0.70) {
+  if (avgSim >= 0.65) {
     const texts = getAllTextContent(node).join(' ')
     const hasPrice = /[$€£₹¥]\s*[\d,.]+|[\d,.]+\s*[$€£₹¥]|\b(USD|EUR|INR|GBP)\b/i.test(texts)
-    const confidence = hasPrice ? 0.95 : 0.85
+    const confidence = hasPrice ? 0.95 : 0.88
     return { isGrid: true, confidence }
   }
 
@@ -380,63 +528,87 @@ export function classifyRLMTree(node: RLMNode, rootHeight: number, parentW?: num
     }
   } else {
     // 4. Container classification hierarchy
-    const badgeCheck = classifyBadgeOrPill(node)
-    if (badgeCheck.isBadge) {
-      node.role = 'BADGE_OR_PILL'
-      node.confidence = badgeCheck.confidence
+    const microCheck = classifyInlineMicroRow(node)
+    if (microCheck.isMicro) {
+      node.role = 'INLINE_MICRO_ROW'
+      node.confidence = microCheck.confidence
     } else {
-      const btnCheck = classifyButton(node)
-      if (btnCheck.isButton) {
-        node.role = btnCheck.role
-        node.confidence = btnCheck.confidence
+      const inputGrpCheck = classifyInputGroup(node)
+      if (inputGrpCheck.isInputGroup) {
+        node.role = 'INPUT_GROUP'
+        node.confidence = inputGrpCheck.confidence
       } else {
-        const tagCloudCheck = classifyTagCloud(node)
-        if (tagCloudCheck.isTagCloud) {
-          node.role = 'TAG_CLOUD'
-          node.confidence = tagCloudCheck.confidence
+        const formFieldCheck = classifyFormField(node)
+        if (formFieldCheck.isFormField) {
+          node.role = 'FORM_FIELD'
+          node.confidence = formFieldCheck.confidence
         } else {
-          const annCheck = classifyAnnouncementBar(node, rootHeight)
-          if (annCheck.isBanner) {
-            node.role = 'ANNOUNCEMENT_BAR'
-            node.confidence = annCheck.confidence
+          const badgeCheck = classifyBadgeOrPill(node)
+          if (badgeCheck.isBadge) {
+            node.role = 'BADGE_OR_PILL'
+            node.confidence = badgeCheck.confidence
           } else {
-            const navCheck = classifyNavigationBar(node, rootHeight)
-            if (navCheck.isNav) {
-              node.role = 'NAVIGATION_BAR'
-              node.confidence = navCheck.confidence
+            const btnCheck = classifyButton(node)
+            if (btnCheck.isButton) {
+              node.role = btnCheck.role
+              node.confidence = btnCheck.confidence
             } else {
-              const heroCheck = classifyHeroSection(node, rootHeight)
-              if (heroCheck.isHero) {
-                node.role = 'HERO_SECTION'
-                node.confidence = heroCheck.confidence
+              const tagCloudCheck = classifyTagCloud(node)
+              if (tagCloudCheck.isTagCloud) {
+                node.role = 'TAG_CLOUD'
+                node.confidence = tagCloudCheck.confidence
               } else {
-                const trustCheck = classifyTrustBadges(node)
-                if (trustCheck.isTrust) {
-                  node.role = 'TRUST_BADGES'
-                  node.confidence = trustCheck.confidence
+                const annCheck = classifyAnnouncementBar(node, rootHeight)
+                if (annCheck.isBanner) {
+                  node.role = 'ANNOUNCEMENT_BAR'
+                  node.confidence = annCheck.confidence
                 } else {
-                  const tableCheck = classifyDataTable(node)
-                  if (tableCheck.isTable) {
-                    node.role = 'DATA_TABLE'
-                    node.confidence = tableCheck.confidence
+                  const navCheck = classifyNavigationBar(node, rootHeight)
+                  if (navCheck.isNav) {
+                    node.role = 'NAVIGATION_BAR'
+                    node.confidence = navCheck.confidence
                   } else {
-                    const footCheck = classifyFooter(node, rootHeight)
-                    if (footCheck.isFooter) {
-                      node.role = 'FOOTER'
-                      node.confidence = footCheck.confidence
+                    const heroCheck = classifyHeroSection(node, rootHeight)
+                    if (heroCheck.isHero) {
+                      node.role = 'HERO_SECTION'
+                      node.confidence = heroCheck.confidence
                     } else {
-                      const gridCheck = classifyProductGrid(node)
-                      if (gridCheck.isGrid) {
-                        node.role = 'PRODUCT_GRID'
-                        node.confidence = gridCheck.confidence
+                      const trustCheck = classifyTrustBadges(node)
+                      if (trustCheck.isTrust) {
+                        node.role = 'TRUST_BADGES'
+                        node.confidence = trustCheck.confidence
                       } else {
-                        const metricCheck = classifyMetricCard(node)
-                        if (metricCheck.isMetric) {
-                          node.role = 'METRIC_CARD_GROUP'
-                          node.confidence = metricCheck.confidence
-                        } else if (node.children.length > 0) {
-                          node.role = 'CONTAINER'
-                          node.confidence = 0.50
+                        const tableCheck = classifyDataTable(node)
+                        if (tableCheck.isTable) {
+                          node.role = 'DATA_TABLE'
+                          node.confidence = tableCheck.confidence
+                        } else {
+                          const footCheck = classifyFooter(node, rootHeight)
+                          if (footCheck.isFooter) {
+                            node.role = 'FOOTER'
+                            node.confidence = footCheck.confidence
+                          } else {
+                            const gridCheck = classifyProductGrid(node)
+                            if (gridCheck.isGrid) {
+                              node.role = 'PRODUCT_GRID'
+                              node.confidence = gridCheck.confidence
+                            } else {
+                              const metricCheck = classifyMetricCard(node)
+                              if (metricCheck.isMetric) {
+                                node.role = 'METRIC_CARD_GROUP'
+                                node.confidence = metricCheck.confidence
+                              } else {
+                                const cardCheck = classifyCard(node)
+                                if (cardCheck.isCard) {
+                                  node.role = 'CARD'
+                                  node.confidence = cardCheck.confidence
+                                } else if (node.children.length > 0) {
+                                  node.role = 'CONTAINER'
+                                  node.confidence = 0.50
+                                }
+                              }
+                            }
+                          }
                         }
                       }
                     }
