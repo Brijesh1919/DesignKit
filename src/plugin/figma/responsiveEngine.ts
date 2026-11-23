@@ -57,10 +57,10 @@ export interface RVP {
 }
 
 export const VIEWPORTS: Record<string, RVP> = {
-  laptop:         { width: 1024, height: 768,  name: 'Laptop',       padding: 32, colGap: 20, rowGap: 40, navH: 64, defaultCardCols: 3 },
-  tablet:         { width: 768,  height: 1024, name: 'Tablet',       padding: 24, colGap: 16, rowGap: 34, navH: 60, defaultCardCols: 2 },
-  mobile:         { width: 390,  height: 844,  name: 'Mobile',       padding: 20, colGap: 12, rowGap: 28, navH: 56, defaultCardCols: 1 },
-  'small-mobile': { width: 320,  height: 568,  name: 'Small Mobile', padding: 16, colGap: 10, rowGap: 24, navH: 52, defaultCardCols: 1 },
+  laptop: { width: 1024, height: 768, name: 'Laptop', padding: 32, colGap: 20, rowGap: 40, navH: 64, defaultCardCols: 3 },
+  tablet: { width: 768, height: 1024, name: 'Tablet', padding: 24, colGap: 16, rowGap: 34, navH: 60, defaultCardCols: 2 },
+  mobile: { width: 390, height: 844, name: 'Mobile', padding: 20, colGap: 12, rowGap: 28, navH: 56, defaultCardCols: 1 },
+  'small-mobile': { width: 320, height: 568, name: 'Small Mobile', padding: 16, colGap: 10, rowGap: 24, navH: 52, defaultCardCols: 1 },
 }
 
 // ---- Typography Scale ----
@@ -212,7 +212,7 @@ function setPos(n: SceneNode, x: number, y: number): void {
         p = p.parent
       }
       if ('x' in n) (n as any).x = Math.round(x)
-    } catch (_) {}
+    } catch (_) { }
   }
 
   try {
@@ -228,12 +228,17 @@ function setPos(n: SceneNode, x: number, y: number): void {
         p = p.parent
       }
       if ('y' in n) (n as any).y = Math.round(y)
-    } catch (_) {}
+    } catch (_) { }
   }
 }
 
 function doResize(n: SceneNode, w: number, h: number): void {
   if (!isValidFigmaNode(n)) return
+  if (n.type === 'TEXT') {
+    // Calling resize directly on a TextNode destroys textAutoResize = 'WIDTH_AND_HEIGHT' in Figma.
+    // TextNode dimensions must only be managed via reflowTextNode.
+    return
+  }
   if ('resize' in n && typeof (n as any).resize === 'function') {
     try {
       (n as any).resize(Math.max(1, Math.round(w)), Math.max(1, Math.round(h)))
@@ -248,7 +253,7 @@ function doResize(n: SceneNode, w: number, h: number): void {
           p = p.parent
         }
         (n as any).resize(Math.max(1, Math.round(w)), Math.max(1, Math.round(h)))
-      } catch (_) {}
+      } catch (_) { }
     }
   }
 }
@@ -266,7 +271,7 @@ export function detachInstancesRecursively(node: SceneNode): SceneNode {
   if (current.type === 'INSTANCE' && 'detachInstance' in current && typeof (current as any).detachInstance === 'function') {
     try {
       current = (current as any).detachInstance()
-    } catch (_) {}
+    } catch (_) { }
   }
 
   try {
@@ -276,9 +281,93 @@ export function detachInstancesRecursively(node: SceneNode): SceneNode {
         detachInstancesRecursively(kid)
       }
     }
-  } catch (_) {}
+  } catch (_) { }
 
   return current
+}
+
+/**
+ * Safely collect all descendant SceneNodes up to maxDepth.
+ */
+export function getAllDescendants(node: SceneNode, maxDepth = 4): SceneNode[] {
+  const result: SceneNode[] = []
+  function recurse(curr: SceneNode, depth: number) {
+    if (depth > maxDepth || !isValidFigmaNode(curr)) return
+    result.push(curr)
+    if ('children' in curr) {
+      for (const c of safeChildren(curr)) {
+        recurse(c, depth + 1)
+      }
+    }
+  }
+  if ('children' in node) {
+    for (const c of safeChildren(node)) {
+      recurse(c, 1)
+    }
+  }
+  return result
+}
+
+/**
+ * Checks if a frame/group is a visual media composite (e.g. product mockup, device frame,
+ * 3D graphic, or illustration) that should be scaled proportionally rather than reflowed as text columns.
+ */
+export function isVisualMediaComposite(node: SceneNode): boolean {
+  if (!isValidFigmaNode(node)) return false
+  if (!('children' in node)) return false
+  const name = (node.name || '').toLowerCase()
+  if (/(mockup|illustration|graphic|hero-img|product-shot|display|device|phone|laptop|art|visual|showcase|3d)/i.test(name)) {
+    return true
+  }
+  // Check children: if it has 0 body text nodes, and contains images, vectors, or shape groups
+  const descendants = getAllDescendants(node, 3)
+  const textNodes = descendants.filter(d => d.type === 'TEXT') as TextNode[]
+  const hasLongText = textNodes.some(t => ((t.characters || '').length > 30))
+  if (hasLongText) return false
+
+  const hasMedia = descendants.some(d => isImageNode(d) || d.type === 'VECTOR' || d.type === 'ELLIPSE' || d.type === 'POLYGON')
+  if (hasMedia && node.height >= 120 && node.width >= 120 && node.height < 900) {
+    return true
+  }
+  return false
+}
+
+/**
+ * Scales a visual media composite proportionally so its relative illustration/mockup
+ * parts remain in perfect relative geometry.
+ */
+export function scaleVisualMediaComposite(node: SceneNode, targetW: number, vp: RVP): number {
+  const origW = Math.max(1, node.width)
+  const origH = Math.max(1, node.height)
+  const scale = Math.min(targetW / origW, 1)
+  const newW = Math.round(origW * scale)
+  const newH = Math.round(origH * scale)
+
+  function scaleChildren(parent: SceneNode, s: number) {
+    if (!('children' in parent)) return
+    for (const c of safeChildren(parent)) {
+      const cx = Math.round(nX(c) * s)
+      const cy = Math.round(nY(c) * s)
+      const cw = Math.max(1, Math.round(c.width * s))
+      const ch = Math.max(1, Math.round(c.height * s))
+      setPos(c, cx, cy)
+      doResize(c, cw, ch)
+      if (c.type === 'TEXT') {
+        const txt = c as TextNode
+        try {
+          if (typeof txt.fontSize === 'number') {
+            txt.fontSize = Math.max(9, Math.round(txt.fontSize * s))
+          }
+        } catch (_) { }
+      }
+      scaleChildren(c, s)
+    }
+  }
+
+  doResize(node, newW, newH)
+  preserveCardCornerRadius(node, newW, newH)
+  scaleChildren(node, scale)
+  return newH
 }
 
 export function isImageNode(n: SceneNode): boolean {
@@ -332,7 +421,7 @@ function isDecorativeNode(n: SceneNode): boolean {
       return true
     }
     if ((n.type === 'VECTOR' || n.type === 'ELLIPSE' || n.type === 'POLYGON' || n.type === 'STAR') &&
-        n.width <= 64 && n.height <= 64 && !('children' in n)) {
+      n.width <= 64 && n.height <= 64 && !('children' in n)) {
       return true
     }
     return false
@@ -367,10 +456,65 @@ function extractNodeCornerRadii(n: any): CornerRadii | null {
 }
 
 /**
+ * Detects whether a node is a small badge, chip, tag, or pill (e.g. "[PROPOSED]", category pills).
+ */
+export function isBadgeOrPillTag(n: SceneNode): boolean {
+  if (!isValidFigmaNode(n)) return false
+  const name = (n.name || '').toLowerCase()
+  if (/(badge|tag|pill|chip|category-pill|label|sticker|tag-item)/i.test(name)) return true
+  if (n.type === 'FRAME' || n.type === 'COMPONENT' || n.type === 'INSTANCE') {
+    if (n.height >= 16 && n.height <= 44 && n.width <= 260) {
+      if ('children' in n) {
+        const kids = safeChildren(n)
+        if (kids.length >= 1 && kids.length <= 4 && kids.some(k => k.type === 'TEXT')) {
+          return true
+        }
+      }
+    }
+  }
+  return false
+}
+
+/**
+ * Clamps corner radii so small pills stay cleanly rounded,
+ * while large container cards and sections never get deformed into giant stadium pills.
+ */
+function applyClampedCornerRadii(node: any, radii: CornerRadii, w: number, h: number): void {
+  const minDim = Math.min(w, h)
+  // Only true small pills/badges (min dimension <= 56) may have stadium half-height pill radius
+  const isPill = minDim <= 56 && (radii.tl >= minDim * 0.38 || radii.tl >= 999)
+  // For cards, containers, and sections: cap corner radius to max 24px (never giant stadium capsule!)
+  const maxAllowedRadius = isPill ? Math.round(minDim / 2) : Math.min(24, Math.round(minDim * 0.15))
+
+  const clamp = (r: number) => {
+    if (r <= 0) return 0
+    if (isPill) return Math.round(minDim / 2)
+    return Math.min(r, maxAllowedRadius)
+  }
+
+  const tl = clamp(radii.tl)
+  const tr = clamp(radii.tr)
+  const bl = clamp(radii.bl)
+  const br = clamp(radii.br)
+
+  try {
+    if ('topLeftRadius' in node) {
+      node.topLeftRadius = tl
+      node.topRightRadius = tr
+      node.bottomLeftRadius = bl
+      node.bottomRightRadius = br
+    } else if ('cornerRadius' in node) {
+      node.cornerRadius = tl
+    }
+  } catch (_) { }
+}
+
+/**
  * Preserves corner radius and card clipping on any card-like container.
  * Supports both uniform cornerRadius and individual corner radii (topLeftRadius, etc.).
- * 1. Ensures the card frame itself retains the corner radius and sets clipsContent = true.
- * 2. Ensures any background rectangle inside the card has matching dimensions and corner radius.
+ * 1. Ensures the card frame itself retains its OWN corner radius (clamped to max 24px).
+ * 2. Never pulls pill button radius from children into the parent container.
+ * 3. Ensures any background rectangle inside the card has matching dimensions and corner radius.
  */
 function preserveCardCornerRadius(card: SceneNode, targetW: number, targetH: number): void {
   if (!isValidFigmaNode(card)) return
@@ -379,16 +523,7 @@ function preserveCardCornerRadius(card: SceneNode, targetW: number, targetH: num
   if (!('children' in card)) {
     const leafRadii = extractNodeCornerRadii(card)
     if (leafRadii) {
-      try {
-        if ('topLeftRadius' in card) {
-          (card as any).topLeftRadius = leafRadii.tl
-          (card as any).topRightRadius = leafRadii.tr
-          (card as any).bottomLeftRadius = leafRadii.bl
-          (card as any).bottomRightRadius = leafRadii.br
-        } else if ('cornerRadius' in card) {
-          (card as any).cornerRadius = leafRadii.tl
-        }
-      } catch (_) {}
+      applyClampedCornerRadii(card, leafRadii, targetW, targetH)
     }
     return
   }
@@ -396,59 +531,40 @@ function preserveCardCornerRadius(card: SceneNode, targetW: number, targetH: num
   const fr = card as FrameNode
   let bestRadii: CornerRadii | null = extractNodeCornerRadii(fr)
 
-  const allKids = safeAllChildren(fr)
-
-  // Check children for background rectangle or card surface that holds corner radius
-  for (const c of allKids) {
-    const cRadii = extractNodeCornerRadii(c)
-    if (cRadii) {
-      if (
-        !bestRadii ||
-        Math.max(cRadii.tl, cRadii.tr, cRadii.bl, cRadii.br) >
-          Math.max(bestRadii.tl, bestRadii.tr, bestRadii.bl, bestRadii.br)
-      ) {
-        bestRadii = cRadii
+  // If card container itself has no corner radius, check ONLY direct full-bleed background shape
+  // NEVER search arbitrary child buttons, tags, or pills, which would bleed pill radius to parent container!
+  if (!bestRadii) {
+    const directKids = safeChildren(fr)
+    for (const c of directKids) {
+      if (isBackgroundNode(c, fr.width, fr.height) && !isButtonLike(c) && !isImageNode(c) && !isBadgeOrPillTag(c)) {
+        const cRadii = extractNodeCornerRadii(c)
+        if (cRadii) {
+          bestRadii = cRadii
+          break
+        }
       }
     }
   }
 
   if (bestRadii) {
-    try {
-      if ('topLeftRadius' in fr) {
-        fr.topLeftRadius = bestRadii.tl
-        fr.topRightRadius = bestRadii.tr
-        fr.bottomLeftRadius = bestRadii.bl
-        fr.bottomRightRadius = bestRadii.br
-      } else if ('cornerRadius' in fr) {
-        fr.cornerRadius = bestRadii.tl
-      }
-      fr.clipsContent = true
-    } catch (_) {}
+    applyClampedCornerRadii(fr, bestRadii, targetW, targetH)
+    try { fr.clipsContent = true } catch (_) { }
 
-    // Synchronize onto background rectangles or card surfaces (never product images!)
-    for (const c of allKids) {
-      if (isImageNode(c)) continue
+    // Synchronize onto background rectangles or card surfaces (never product images, buttons, or badges!)
+    for (const c of safeChildren(fr)) {
+      if (isImageNode(c) || isButtonLike(c) || isBadgeOrPillTag(c)) continue
 
       const isCardBg =
         isBackgroundNode(c, fr.width, fr.height) ||
         (c.type === 'RECTANGLE' &&
           nX(c) <= 8 &&
           nY(c) <= 8 &&
-          c.width >= targetW * 0.50 &&
-          c.height >= targetH * 0.40)
+          c.width >= targetW * 0.75 &&
+          c.height >= targetH * 0.70)
       if (isCardBg) {
-        try {
-          if ('topLeftRadius' in c) {
-            (c as any).topLeftRadius = bestRadii.tl
-            (c as any).topRightRadius = bestRadii.tr
-            (c as any).bottomLeftRadius = bestRadii.bl
-            (c as any).bottomRightRadius = bestRadii.br
-          } else if ('cornerRadius' in c) {
-            (c as any).cornerRadius = bestRadii.tl
-          }
-          setPos(c, 0, 0)
-          doResize(c, targetW, targetH)
-        } catch (_) {}
+        applyClampedCornerRadii(c, bestRadii, targetW, targetH)
+        setPos(c, 0, 0)
+        doResize(c, targetW, targetH)
       }
     }
   }
@@ -473,9 +589,10 @@ function hasVisibleFillOrStroke(n: SceneNode): boolean {
 
 function isButtonLike(n: SceneNode): boolean {
   if (!isValidFigmaNode(n)) return false
+  if (isBadgeOrPillTag(n)) return false
   try {
     if ((n.type === 'FRAME' || n.type === 'COMPONENT' || n.type === 'INSTANCE' || n.type === 'GROUP') &&
-        n.height >= 28 && n.height <= 72 && n.width >= 40 && n.width <= 360) {
+      n.height >= 28 && n.height <= 72 && n.width >= 40 && n.width <= 360) {
       if ('children' in n) {
         const kids = safeAllChildren(n)
         const texts = kids.filter(c => c.type === 'TEXT')
@@ -595,14 +712,49 @@ function clusterKidsIntoColumns(kids: SceneNode[], containerW: number): SceneNod
     return kids
   }
 
-  const midX = minX + (maxX - minX) / 2
-  const leftCol = kids.filter(k => nX(k) + k.width / 2 < midX)
-  const rightCol = kids.filter(k => nX(k) + k.width / 2 >= midX)
+  // Find natural column groupings along X
+  interface ColCluster {
+    minX: number
+    maxX: number
+    centerX: number
+    nodes: SceneNode[]
+  }
+  const sortedByX = [...kids].sort((a, b) => nX(a) - nX(b))
+  const colClusters: ColCluster[] = []
 
-  if (leftCol.length >= 1 && rightCol.length >= 1) {
-    leftCol.sort((a, b) => nY(a) - nY(b))
-    rightCol.sort((a, b) => nY(a) - nY(b))
-    return [...leftCol, ...rightCol]
+  for (const k of sortedByX) {
+    const kCenterX = nX(k) + k.width / 2
+    let matchedCol: ColCluster | null = null
+    for (const c of colClusters) {
+      if (Math.abs(kCenterX - c.centerX) <= containerW * 0.18 || (nX(k) >= c.minX && nX(k) <= c.maxX + 30)) {
+        matchedCol = c
+        break
+      }
+    }
+    if (matchedCol) {
+      matchedCol.nodes.push(k)
+      matchedCol.minX = Math.min(matchedCol.minX, nX(k))
+      matchedCol.maxX = Math.max(matchedCol.maxX, nX(k) + k.width)
+      matchedCol.centerX = (matchedCol.minX + matchedCol.maxX) / 2
+    } else {
+      colClusters.push({
+        minX: nX(k),
+        maxX: nX(k) + k.width,
+        centerX: kCenterX,
+        nodes: [k],
+      })
+    }
+  }
+
+  // If 2 or more distinct columns were found, sort within each column top-to-bottom
+  if (colClusters.length >= 2 && colClusters.every(c => c.nodes.length >= 1)) {
+    colClusters.sort((a, b) => a.minX - b.minX)
+    const result: SceneNode[] = []
+    for (const col of colClusters) {
+      col.nodes.sort((a, b) => nY(a) - nY(b))
+      result.push(...col.nodes)
+    }
+    return result
   }
 
   return kids
@@ -624,10 +776,10 @@ function alignedX(
 ): number {
   switch (alignment) {
     case 'CENTER': return Math.round(baseX + (contentW - childW) / 2)
-    case 'RIGHT':  return Math.round(baseX + contentW - childW)
-    case 'FILL':   return baseX
+    case 'RIGHT': return Math.round(baseX + contentW - childW)
+    case 'FILL': return baseX
     case 'LEFT':
-    default:       return baseX
+    default: return baseX
   }
 }
 
@@ -678,7 +830,7 @@ async function reflowTextNode(
       try {
         const rangeFont = node.getRangeFontName(0, 1) as FontName
         if (rangeFont) await loadFontSafe(rangeFont)
-      } catch (_) {}
+      } catch (_) { }
     }
 
     if (typeof node.fontSize === 'number') {
@@ -691,13 +843,34 @@ async function reflowTextNode(
 
       if (node.lineHeight && typeof node.lineHeight === 'object') {
         if (node.lineHeight.unit === 'PIXELS' && node.lineHeight.value > newSize * 1.5) {
-          try { node.lineHeight = { unit: 'AUTO' } } catch (_) {}
+          try { node.lineHeight = { unit: 'AUTO' } } catch (_) { }
         }
       }
     }
 
+    const chars = (node.characters || '').trim()
+    const hasExplicitNewlines = chars.includes('\n')
+    const maxAllowedW = Math.max(60, targetWidth)
+
+    // First, allow the text to measure its natural single-line width
+    node.textAutoResize = 'WIDTH_AND_HEIGHT'
+    const naturalW = node.width
+
+    // Check if text is micro-copy that should hug width (buttons, tags, badges, pills, prices, sku, links):
+    const isMicroCopy = (chars.length <= 28 && !hasExplicitNewlines) ||
+      (typeof node.fontSize === 'number' && node.fontSize <= 16 && chars.length <= 40 && !hasExplicitNewlines)
+    const fitsTarget = naturalW <= maxAllowedW && !hasExplicitNewlines
+
+    if (fitsTarget || isMicroCopy) {
+      node.textAutoResize = 'WIDTH_AND_HEIGHT'
+      return node.height
+    }
+
+    // Otherwise, multi-line headlines, paragraphs, and descriptions wrap cleanly with Auto Height
     node.textAutoResize = 'NONE'
-    doResize(node, targetWidth, node.height)
+    try {
+      (node as any).resize(maxAllowedW, Math.max(16, node.height))
+    } catch (_) { }
     node.textAutoResize = 'HEIGHT'
 
     return node.height
@@ -825,7 +998,7 @@ export function looksLikeCard(node: SceneNode): boolean {
   if (!isValidFigmaNode(node)) return false
   if (isImageNode(node)) return true
   if (node.type !== 'FRAME' && node.type !== 'COMPONENT' &&
-      node.type !== 'INSTANCE' && node.type !== 'GROUP') return false
+    node.type !== 'INSTANCE' && node.type !== 'GROUP') return false
   if (!('children' in node)) return false
   const kids = safeChildren(node)
   if (kids.length === 0) return false
@@ -861,7 +1034,7 @@ export function isMetricCard(node: SceneNode): boolean {
   return texts.some(t => {
     const chars = (t.characters || '').trim()
     return /^([+$€£₹¥]?\s*[\d,.]+[kKmMbB%]?|[\d,.]+%?|[+$€£₹¥]\s*[\d,.]+)$/.test(chars) ||
-           /(revenue|users|orders|conversions|bounce|sales|profit|growth|total|active|rate|sessions|views|subscribers|mrr|arr)/i.test(t.name || chars)
+      /(revenue|users|orders|conversions|bounce|sales|profit|growth|total|active|rate|sessions|views|subscribers|mrr|arr)/i.test(t.name || chars)
   })
 }
 
@@ -871,16 +1044,33 @@ export function isMetricCard(node: SceneNode): boolean {
 export function isProductCard(node: SceneNode): boolean {
   if (!looksLikeCard(node)) return false
   if (!('children' in node)) return false
-  const kids = visibleChildren(node)
 
-  const hasImage = kids.some(k => isImageNode(k))
-  const texts = kids.filter(k => k.type === 'TEXT') as TextNode[]
-  const hasPrice = texts.some(t => {
-    const chars = (t.characters || '').trim()
-    return /([$€£₹¥]\s*[\d,.]+|[\d,.]+\s*[$€£₹¥]|\b(USD|EUR|INR|GBP)\s*[\d,.]+)/i.test(chars)
+  const name = (node.name || '').toLowerCase()
+  if (/(product|item-card|product-card|shoe|sneaker|catalog-item|merch|apparel|listing-card|productcard)/i.test(name)) {
+    return true
+  }
+
+  const allDescendants = getAllDescendants(node, 3)
+
+  const hasPrice = allDescendants.some(d => {
+    if (d.type !== 'TEXT') return false
+    const text = ((d as TextNode).characters || '').trim()
+    return /([$€£₹¥]\s*[\d,.]+|[\d,.]+\s*[$€£₹¥]|\b(USD|EUR|INR|GBP)\s*[\d,.]+)/i.test(text)
   })
 
-  return (hasImage && hasPrice) || (hasPrice && kids.length >= 2) || (hasImage && /(product|item|shoe|apparel|sneaker|catalog|shop)/i.test(node.name || ''))
+  const hasImage = allDescendants.some(d => isImageNode(d) || /(product-img|product-image|thumb|photo|pic|shoe|apparel)/i.test(d.name || ''))
+  const hasEcommerceAction = allDescendants.some(d => /(cart|buy|bag|add-to-cart|order|wishlist|heart)/i.test(d.name || ''))
+  const hasDiscountBadge = allDescendants.some(d => {
+    if (d.type !== 'TEXT') return false
+    const text = ((d as TextNode).characters || '').trim()
+    return /(-\d+%\b|\d+%\s*OFF\b|SAVE\s*[$€£₹¥]?\d+)/i.test(text)
+  })
+
+  return (
+    (hasImage && hasPrice) ||
+    (hasPrice && (hasEcommerceAction || hasDiscountBadge || allDescendants.length >= 2)) ||
+    (hasImage && /(product|item|shoe|apparel|sneaker|catalog|shop)/i.test(node.name || ''))
+  )
 }
 
 /**
@@ -908,10 +1098,11 @@ function detectRepeatedCollection(kids: SceneNode[]): boolean {
   if (cards.length < 3) return false
 
   // Guard: if the sibling count is small relative to containers, it may be
-  // a heterogeneous composition (e.g. Hero: [image, text-group, button-group])
-  // Require that at least 75% of visible children are card-like
-  const allVisible = kids.filter(k => isNodeValidAndVisible(k))
-  if (cards.length < allVisible.length * 0.75) return false
+  // a heterogeneous composition (e.g. Hero: [image, text-group, button-group]).
+  // Exclude section title/subtitle text nodes located above the cards when evaluating density.
+  const firstCardY = Math.min(...cards.map(c => nY(c)))
+  const contentKids = kids.filter(k => isNodeValidAndVisible(k) && !(k.type === 'TEXT' && nY(k) < firstCardY))
+  if (cards.length < contentKids.length * 0.70) return false
 
   // Check height variance: cards in a repeated collection should have reasonably similar heights
   const heights = cards.map(c => c.height)
@@ -954,6 +1145,19 @@ function detectCollectionColumns(kids: SceneNode[], vp: RVP, archetype?: string)
   }
 
   // Mobile (< 768px):
+  const sampleCount = Math.min(cards.length, 4)
+  const sample = cards.slice(0, sampleCount)
+  const avgW = sample.reduce((s, c) => s + c.width, 0) / sampleCount
+  const avgH = sample.reduce((s, c) => s + c.height, 0) / sampleCount
+  const avgKidCount = sample.reduce((s, c) => {
+    return s + ('children' in c ? safeChildren(c).length : 0)
+  }, 0) / sampleCount
+
+  // Wide banners / large feature kits (e.g. 2 wide banners of 500-600px) MUST stay 1 column on mobile!
+  if (avgW >= 460 || (cards.length <= 2 && avgW >= 360)) {
+    return 1
+  }
+
   // 1. Metric cards in dashboards: 2-column grid
   const metricCards = cards.filter(c => isMetricCard(c))
   if (metricCards.length >= 2 && metricCards.length >= cards.length * 0.5) {
@@ -962,24 +1166,15 @@ function detectCollectionColumns(kids: SceneNode[], vp: RVP, archetype?: string)
 
   // 2. Product cards in e-commerce: 2-column grid
   const productCards = cards.filter(c => isProductCard(c))
-  if (productCards.length >= 2 || archetype === 'E_COMMERCE') {
+  if (productCards.length >= 2 || (archetype === 'E_COMMERCE' && cards.length >= 3 && avgW < 460)) {
     return 2
   }
 
   // 3. Image / photo gallery: 2-column grid
   const isAllImages = cards.every(c => isImageNode(c) || (c.type === 'FRAME' && visibleChildren(c).every(k => isImageNode(k))))
-  if (isAllImages && cards.length >= 3) {
+  if (isAllImages && cards.length >= 3 && avgW < 480) {
     return 2
   }
-
-  const sampleCount = Math.min(cards.length, 4)
-  const sample = cards.slice(0, sampleCount)
-
-  const avgW = sample.reduce((s, c) => s + c.width, 0) / sampleCount
-  const avgH = sample.reduce((s, c) => s + c.height, 0) / sampleCount
-  const avgKidCount = sample.reduce((s, c) => {
-    return s + ('children' in c ? safeChildren(c).length : 0)
-  }, 0) / sampleCount
 
   // What would each card's width be in a 2-col layout?
   const mobileItemW = Math.floor((vp.width - vp.padding * 2 - vp.colGap) / 2)
@@ -990,9 +1185,6 @@ function detectCollectionColumns(kids: SceneNode[], vp: RVP, archetype?: string)
   // Text-heavy cards (tall & many children): always 1 column
   const aspectRatio = avgH / Math.max(avgW, 1)
   if (aspectRatio > 2.0 && avgKidCount > 3) return 1
-
-  // Very wide desktop cards that would be squished too much: 1 column
-  if (avgW > vp.width * 1.0) return 1
 
   // Cards that are already compact squares or short rectangles on desktop → 2 col
   if (avgW <= 300 && avgH <= 300 && avgKidCount <= 5) return 2
@@ -1026,6 +1218,11 @@ interface NavElements {
  */
 function isAnnouncementBar(node: SceneNode): boolean {
   if (!isValidFigmaNode(node)) return false
+  // Badges, tags, pills, buttons, and chips are NEVER announcement bars
+  if (isBadgeOrPillTag(node) || isButtonLike(node)) return false
+  // Announcement bars are wide banner strips across the page
+  if (node.width < 250) return false
+
   const name = (node.name || '').toLowerCase()
 
   // Navigation, header, and already-created mobile menus are NEVER announcement bars
@@ -1039,7 +1236,7 @@ function isAnnouncementBar(node: SceneNode): boolean {
   }
 
   // 2. Any thin strip at or near the top of the canvas (height <= 56px)
-  if (node.height <= 56) {
+  if (node.height <= 56 && node.width >= 280) {
     if (/(banner|strip|sale|shipping)/i.test(name) && !/(sidebar|nav-links|menu-list)/i.test(name)) {
       if ('children' in node) {
         const kids = visibleChildren(node).filter(k => !isBackgroundNode(k, node.width, node.height))
@@ -1053,7 +1250,7 @@ function isAnnouncementBar(node: SceneNode): boolean {
   }
 
   // 3. Structural check: thin row (<= 48px) without brand logo and without multiple nav links
-  if (node.height <= 48 && 'children' in node) {
+  if (node.height <= 48 && node.width >= 280 && 'children' in node) {
     const kids = visibleChildren(node).filter(k => !isBackgroundNode(k, node.width, node.height))
     const hasBrand = kids.some(k => isLikelyBrandElement(k))
     const navLinks = kids.filter(k => isNavItemCandidate(k))
@@ -1061,7 +1258,7 @@ function isAnnouncementBar(node: SceneNode): boolean {
   }
 
   // 4. Pure text banner at top
-  if (node.type === 'TEXT' && node.height <= 48) {
+  if (node.type === 'TEXT' && node.height <= 48 && node.width >= 280) {
     return true
   }
 
@@ -1100,14 +1297,22 @@ function detectNavigationStructure(
   }
 
   // Must have a nav-like height: compact row, not an entire long content section
-  const isShort = node.height <= 260
-  const isThinSlice = node.height / Math.max(1, parentH) <= 0.25
-  if (!isShort && !isThinSlice && !isNamedNav) return false
+  // Headers are compact (<= 140px). If explicitly named nav/header, allow up to 260px.
+  const isShort = isNamedNav ? node.height <= 260 : node.height <= 140
+  const isThinSlice = isNamedNav && node.height / Math.max(1, parentH) <= 0.25
+  if (!isShort && !isThinSlice) return false
 
   // If explicitly named nav/header and near top with valid height, accept!
   if (isNamedNav && (isShort || isThinSlice)) {
     return true
   }
+
+  // For un-named frames, it MUST NOT look like a hero, feature, card, or content section
+  if (node.height > 140) return false
+  const fgKids = kids.filter(k => !isBackgroundNode(k, container.width, container.height))
+  if (fgKids.some(k => looksLikeCard(k) || isProductCard(k))) return false
+  if (fgKids.some(k => k.type === 'TEXT' && typeof (k as TextNode).fontSize === 'number' && (k as TextNode).fontSize > 24)) return false
+  if (fgKids.some(k => isImageNode(k) && k.width > 200 && k.height > 100)) return false
 
   const alMode = detectAutoLayout(container)
 
@@ -1121,8 +1326,14 @@ function detectNavigationStructure(
   if (!isHorizontal) return false
 
   // Must NOT be a repeated collection of similar items (that's a horizontal card row, not a nav)
-  const fgKids = kids.filter(k => !isBackgroundNode(k, container.width, container.height))
   if (detectRepeatedCollection(fgKids)) return false
+
+  // For un-named frames, must contain at least one navigation-like indicator:
+  // Brand logo, nav links, or utility/action element
+  const hasBrand = fgKids.some(k => isLikelyBrandElement(k))
+  const hasNavLinks = fgKids.some(k => isNavItemCandidate(k))
+  const hasUtility = fgKids.some(k => isUtilityElement(k) || isMenuTriggerElement(k))
+  if (!hasBrand && !hasNavLinks && !hasUtility) return false
 
   return true
 }
@@ -1235,116 +1446,31 @@ function isNavItemCandidate(n: SceneNode): boolean {
   if (n.type === 'TEXT') {
     const t = n as TextNode
     const fs = typeof t.fontSize === 'number' ? t.fontSize : 16
-    if (fs > 22) return false
+    if (fs > 20) return false
     const len = (t.characters || '').length
-    if (len > 40) return false
+    if (len < 1 || len > 35) return false
     return true
   }
 
   if ('children' in n) {
-    if (n.height > 64 || n.width > 300) return false
+    if (n.height > 48 || n.width > 220) return false
+    if (looksLikeCard(n) || isProductCard(n)) return false
     const name = (n.name || '').toLowerCase()
-    if (
-      name.includes('nav') ||
-      name.includes('link') ||
-      name.includes('item') ||
-      name.includes('tab') ||
-      name.includes('menu')
-    ) {
-      return true
-    }
+    const isNamedNavKid = name.includes('nav') || name.includes('link') || name.includes('tab') || name.includes('menu') || name.includes('item')
     const kids = safeChildren(n)
-    if (kids.some(k => k.type === 'TEXT' && typeof (k as TextNode).fontSize === 'number' && (k as TextNode).fontSize > 20)) {
+    if (kids.some(k => k.type === 'TEXT' && typeof (k as TextNode).fontSize === 'number' && (k as TextNode).fontSize > 18)) {
       return false
     }
-    // Has text content anywhere inside this compact item
-    if (hasTextContent(n)) return true
-  }
-  return false
-}
-
-/**
- * Detects if a top-level section or node is a navigation/menu/links item or container
- * that should be replaced/consumed by the mobile list button, NOT reflowed as page content.
- */
-function isNavLinksSection(node: SceneNode, parentH: number, origY: number): boolean {
-  if (!isValidFigmaNode(node)) return false
-
-  // Announcement bar / promo banner is NEVER a nav links section to be consumed
-  if (isAnnouncementBar(node)) return false
-
-  const name = (node.name || '').toLowerCase()
-
-  // Content sections are NEVER nav links to be consumed
-  if (/(hero|banner|intro|cta|feature|about|pricing|content|main|gallery|product|portfolio|card)/i.test(name)) return false
-
-  // Footer is NEVER a nav links section to be consumed
-  if (name.includes('footer')) return false
-
-  // Must be located near the top of the design (top 35% of canvas height or Y <= 320)
-  const relY = origY / Math.max(1, parentH)
-  if (relY > 0.35 && origY > 320) return false
-
-  // If it's a content section with large heading text, it's not a nav links bar
-  if ('children' in node) {
-    const texts = safeChildren(node).filter(k => k.type === 'TEXT') as TextNode[]
-    if (texts.some(t => typeof t.fontSize === 'number' && t.fontSize > 20)) return false
-  }
-
-  // If it's a very tall content section (> 220px and > 15% of page), it's not a pure nav links bar
-  if (node.height > 220 && node.height / Math.max(1, parentH) > 0.15) return false
-
-  // 1. Direct name match for nav/menu/links
-  if (
-    name.includes('nav') ||
-    name.includes('menu') ||
-    name.includes('link') ||
-    name.includes('tab')
-  ) {
-    return true
-  }
-
-  // 2. Loose text node or button-like node at the top of the canvas
-  if (node.type === 'TEXT' && (typeof (node as TextNode).fontSize !== 'number' || (node as TextNode).fontSize <= 20)) {
-    return true
-  }
-  if (isButtonLike(node) && node.width <= 180 && node.height <= 48) {
-    return true
-  }
-
-  // 3. Structural navigation detection
-  if (detectNavigationStructure(node, parentH)) return true
-
-  // 4. Container whose foreground children are primarily nav items, links, or buttons
-  if ('children' in node) {
-    const kids = safeChildren(node).filter(k => !isBackgroundNode(k, node.width, node.height))
-    if (kids.length === 0) return false
-    const navLikeKids = kids.filter(k => isNavItemCandidate(k) || isButtonLike(k) || isUtilityElement(k))
-    if (navLikeKids.length >= 2 && navLikeKids.length >= kids.length * 0.75) {
+    const textKids = kids.filter(k => k.type === 'TEXT') as TextNode[]
+    if (textKids.length === 1 && (textKids[0].characters || '').length <= 35) {
       return true
     }
+    if (isNamedNavKid && kids.length <= 3) return true
   }
-
   return false
 }
 
-/**
- * Extracts navigation links from a secondary nav section.
- */
-function extractSecondaryNavItems(secondaryNode: SceneNode): SceneNode[] {
-  if (!isValidFigmaNode(secondaryNode)) return []
-  if (secondaryNode.type === 'TEXT') return [secondaryNode]
-  if ('children' in secondaryNode) {
-    const { navItems } = findNavigationCollection(secondaryNode, null)
-    if (navItems.length > 0) return navItems
-    const kids = visibleChildren(secondaryNode).filter(
-      k => !isBackgroundNode(k, secondaryNode.width, secondaryNode.height) && !isUtilityElement(k)
-    )
-    const candidates = kids.filter(k => isNavItemCandidate(k) || isButtonLike(k))
-    if (candidates.length > 0) return candidates
-  }
-  return []
-}
+
 
 /**
  * Finds the actual collection of navigation items.
@@ -1415,7 +1541,7 @@ function findNavigationCollection(
       const subKids = visibleChildren(cand).filter(
         c => !isBackgroundNode(c, cand.width, cand.height) && !isUtilityElement(c)
       )
-      if (subKids.length >= 2) {
+      if (subKids.length >= 2 && subKids.every(k => isNavItemCandidate(k))) {
         return { navItems: subKids, navContainer: cand }
       }
     }
@@ -1596,13 +1722,13 @@ function detectFooterStructure(node: SceneNode, parentH: number): boolean {
     const kn = (k.name || '').toLowerCase()
     const kt = k.type === 'TEXT' ? ((k as TextNode).characters || '').toLowerCase() : ''
     return /(copyright|all rights reserved|©|\b202\d\b|privacy policy|terms of service)/i.test(kn) ||
-           /(copyright|all rights reserved|©|\b202\d\b|privacy policy|terms of service)/i.test(kt)
+      /(copyright|all rights reserved|©|\b202\d\b|privacy policy|terms of service)/i.test(kt)
   })
 
   const linkColCount = kids.filter(k => {
     const kn = (k.name || '').toLowerCase()
     return /(links|column|col|navigation|menu|legal|company|product|resources|about|support)/i.test(kn) ||
-           ('children' in k && visibleChildren(k).filter(c => c.type === 'TEXT').length >= 3)
+      ('children' in k && visibleChildren(k).filter(c => c.type === 'TEXT').length >= 3)
   }).length
 
   if (isNamedFooter) return true
@@ -1665,16 +1791,21 @@ function detectSidebarLayout(
     const kidH = kid.height
     const name = (kid.name || '').toLowerCase()
 
+    // Must not be a footer, header, banner, or content section
+    if (/(footer|bottom|header|banner|promo|hero|product|industry|catalog|pricing|alert)/i.test(name)) {
+      continue
+    }
+
     const isNamedSidebar =
       /(sidebar|side-nav|sidenav|side_nav|side\s*nav|side-menu|sidemenu|side\s*menu|dashboard-nav|dashboard\s*nav|left-nav|left\s*nav|left-menu|left\s*menu|vertical-nav|vertical\s*nav|drawer|aside)/i.test(name) ||
-      (/(nav|navigation|menu)/i.test(name) && kidH > kidW * 1.4)
+      (/(nav|navigation|menu)/i.test(name) && kidH > kidW * 1.5 && !/(footer|header)/i.test(name))
 
     const isNarrow = kidW <= parentW * 0.42
-    const isTall = kidH >= 200
+    const isTall = kidH >= Math.max(300, parentH * 0.35)
     const isLeftEdge = kidX <= parentW * 0.30
     const isRightEdge = kidX >= parentW * 0.58
 
-    if ((isNamedSidebar && isNarrow) || (isNarrow && isTall && (isLeftEdge || isRightEdge))) {
+    if (isNamedSidebar && isNarrow && isTall && (isLeftEdge || isRightEdge)) {
       if ('children' in kid) {
         const subKids = visibleChildren(kid).filter(c => !isBackgroundNode(c, kid.width, kid.height))
         if (subKids.length >= 1) {
@@ -1695,16 +1826,20 @@ function detectSidebarLayout(
       const kidH = kid.height
       const name = (kid.name || '').toLowerCase()
 
+      if (/(footer|bottom|header|banner|promo|hero|product|industry|catalog|pricing|alert)/i.test(name)) {
+        continue
+      }
+
       const isNamedSidebar =
         /(sidebar|side-nav|sidenav|side_nav|side\s*nav|side-menu|sidemenu|side\s*menu|dashboard-nav|dashboard\s*nav|left-nav|left\s*nav|left-menu|left\s*menu|vertical-nav|vertical\s*nav|drawer|aside)/i.test(name) ||
-        (/(nav|navigation|menu)/i.test(name) && kidH > kidW * 1.4)
+        (/(nav|navigation|menu)/i.test(name) && kidH > kidW * 1.5 && !/(footer|header)/i.test(name))
 
       const isNarrow = kidW <= wrapper.width * 0.42
-      const isTall = kidH >= 200
+      const isTall = kidH >= Math.max(300, wrapper.height * 0.35)
       const isLeftEdge = kidX <= wrapper.width * 0.30
       const isRightEdge = kidX >= wrapper.width * 0.58
 
-      if ((isNamedSidebar && isNarrow) || (isNarrow && isTall && (isLeftEdge || isRightEdge))) {
+      if (isNamedSidebar && isNarrow && isTall && (isLeftEdge || isRightEdge)) {
         if ('children' in kid) {
           const subKids = visibleChildren(kid).filter(c => !isBackgroundNode(c, kid.width, kid.height))
           if (subKids.length >= 1) {
@@ -1827,30 +1962,51 @@ async function transformAutoLayoutVertical(
 
   // Recurse into children that have Auto Layout or complex structure
   for (const child of safeChildren(node)) {
-    if ('layoutMode' in child) {
+    const isBadge = isBadgeOrPillTag(child) || (child.height <= 36 && child.width <= 160)
+    if (isBadge) {
+      try {
+        (child as any).layoutAlign = 'INHERIT'
+        (child as any).layoutSizingHorizontal = 'HUG'
+        (child as any).layoutSizingVertical = 'HUG'
+        (child as any).primaryAxisSizingMode = 'AUTO'
+        (child as any).counterAxisSizingMode = 'AUTO'
+      } catch (_) { }
+      if ('children' in child) {
+        for (const ck of visibleChildren(child)) {
+          if (ck.type === 'TEXT') {
+            (ck as TextNode).textAutoResize = 'WIDTH_AND_HEIGHT'
+          }
+        }
+      }
+      preserveCardCornerRadius(child, child.width, child.height)
+    } else if ('layoutMode' in child) {
       doResize(child, innerW, child.height)
       await reflowNode(child, vp, innerW, log)
+      preserveCardCornerRadius(child, innerW, child.height)
     } else if (child.type === 'TEXT') {
       await reflowTextNode(child as TextNode, innerW, vp, log)
+      preserveCardCornerRadius(child, innerW, child.height)
     } else if (isImageNode(child)) {
       const aspect = child.height / Math.max(1, child.width)
       const imgW = innerW
       const imgH = Math.round(imgW * aspect)
       doResize(child, imgW, imgH)
+      preserveCardCornerRadius(child, innerW, child.height)
     } else if ('children' in child) {
       doResize(child, innerW, child.height)
       await reflowNode(child, vp, innerW, log)
+      preserveCardCornerRadius(child, innerW, child.height)
     } else {
       if (child.width > innerW) {
         doResize(child, innerW, child.height)
       }
+      preserveCardCornerRadius(child, innerW, child.height)
     }
-    preserveCardCornerRadius(child, innerW, child.height)
   }
 
   try {
     node.primaryAxisSizingMode = 'AUTO'
-  } catch (_) {}
+  } catch (_) { }
 
   const kids = safeChildren(node)
   const totalChildH = kids.reduce((s, c) => s + c.height, 0) + Math.max(0, kids.length - 1) * (node.itemSpacing || 0)
@@ -1866,6 +2022,45 @@ async function transformAutoLayoutVertical(
 // ============================================================
 // TRANSFORMER: AUTO LAYOUT (HORIZONTAL)
 // ============================================================
+
+/**
+ * Checks if a horizontal Auto Layout row contains inline micro-content
+ * (such as a rating row, price row, color swatches, tag pills, or icon+label)
+ * that should remain horizontal and never be flipped to vertical unless overflowing.
+ */
+function isInlineMicroRow(node: FrameNode, kids: SceneNode[]): boolean {
+  if (kids.length <= 1) return true
+  // Rating row (stars + review text)
+  const isRating = kids.some(k => /(star|rating|review)/i.test(k.name || '')) ||
+    (kids.length === 2 && kids.some(k => k.type === 'TEXT' && /[★☆]/.test((k as TextNode).characters || '')))
+  if (isRating) return true
+
+  // Price row (price + strikethrough price or badge)
+  const isPrice = kids.every(k => k.type === 'TEXT' || isButtonLike(k) || (k.width <= 90 && k.height <= 36)) &&
+    kids.some(k => k.type === 'TEXT' && /[$€£₹¥\d%]/.test((k as TextNode).characters || ''))
+  if (isPrice) return true
+
+  // Swatches / chips (dots, color circles, size pills)
+  const isSwatches = kids.every(k => (k.width <= 36 && k.height <= 36) || (k.height <= 28 && k.width <= 50))
+  if (isSwatches) return true
+
+  // Icon + label pair (e.g. [Icon] Text)
+  if (kids.length === 2 && (isIconNode(kids[0]) || kids[0].width <= 28)) return true
+
+  // Compact tag / pill row (only micro if it actually fits in available space)
+  if (kids.every(k => k.height <= 32 && k.width <= 110)) {
+    const totalW = kids.reduce((s, c) => s + c.width, 0) + (kids.length - 1) * (node.itemSpacing || 8)
+    if (totalW <= node.width) return true
+  }
+
+  // Compact button group that fits within available width
+  if (kids.every(k => isButtonLike(k))) {
+    const totalW = kids.reduce((s, c) => s + c.width, 0) + (kids.length - 1) * (node.itemSpacing || 8)
+    if (totalW <= node.width) return true
+  }
+
+  return false
+}
 
 /**
  * Transforms a HORIZONTAL Auto Layout node for mobile.
@@ -1899,11 +2094,30 @@ async function transformAutoLayoutHorizontal(
             await loadFontSafe(txt.fontName as FontName)
           }
           txt.textAlignHorizontal = 'CENTER'
-        } catch (_) {}
+        } catch (_) { }
       }
     }
     log.push(`"${node.name}" [ANNOUNCEMENT_BAR|AL]: preserved top banner (${targetW}x${barH}px)`)
     return barH
+  }
+
+  // Badge / Chip / Pill fast-path: preserve compact chip dimensions, hug contents horizontally & auto-width text
+  if (isBadgeOrPillTag(node)) {
+    try {
+      (node as any).layoutSizingHorizontal = 'HUG'
+      (node as any).layoutSizingVertical = 'HUG'
+      node.primaryAxisSizingMode = 'AUTO'
+      node.counterAxisSizingMode = 'AUTO'
+    } catch (_) { }
+    for (const c of kids) {
+      if (c.type === 'TEXT') {
+        const txt = c as TextNode
+        await reflowTextNode(txt, node.width, vp, log)
+        txt.textAutoResize = 'WIDTH_AND_HEIGHT'
+      }
+    }
+    preserveCardCornerRadius(node, node.width, node.height)
+    return node.height
   }
 
   const totalChildW = kids.reduce((s, c) => s + c.width, 0) + (kids.length - 1) * (node.itemSpacing || 0)
@@ -1919,10 +2133,15 @@ async function transformAutoLayoutHorizontal(
 
   const newAvailW = targetW - node.paddingLeft - node.paddingRight
 
-  // Flip to vertical if children exceed available width OR on mobile where substantial columns are side-by-side
+  // Flip to vertical on mobile if:
+  // 1. Total child width exceeds available viewport width, OR
+  // 2. Children are cards, columns, or containers (not an inline micro row), OR
+  // 3. 3 or more substantial items are arranged horizontally
+  const isMicro = isInlineMicroRow(node, kids)
+  const hasSubstantialCards = kids.some(c => 'children' in c || c.height >= 45 || isImageNode(c) || looksLikeCard(c))
   const shouldFlip =
     totalChildW > newAvailW ||
-    (vp.width < 768 && kids.length >= 2 && kids.some(c => c.width >= newAvailW * 0.40))
+    (!isMicro && vp.width < 768 && (kids.length >= 3 || hasSubstantialCards || (kids.length >= 2 && totalChildW > newAvailW * 0.85)))
 
   if (shouldFlip) {
     // Children won't fit horizontally → switch to vertical
@@ -1932,9 +2151,27 @@ async function transformAutoLayoutHorizontal(
 
     // Resize children to fill width
     for (const child of kids) {
-      doResize(child, newAvailW, child.height)
-      try { (child as any).layoutAlign = 'STRETCH' } catch (_) {}
-      try { (child as any).layoutSizingHorizontal = 'FILL' } catch (_) {}
+      const isBadge = isBadgeOrPillTag(child) || (child.height <= 36 && child.width <= 160)
+      if (isBadge) {
+        try {
+          (child as any).layoutAlign = 'INHERIT'
+          (child as any).layoutSizingHorizontal = 'HUG'
+          (child as any).layoutSizingVertical = 'HUG'
+          (child as any).primaryAxisSizingMode = 'AUTO'
+          (child as any).counterAxisSizingMode = 'AUTO'
+        } catch (_) { }
+        if ('children' in child) {
+          for (const ck of visibleChildren(child)) {
+            if (ck.type === 'TEXT') {
+              (ck as TextNode).textAutoResize = 'WIDTH_AND_HEIGHT'
+            }
+          }
+        }
+      } else {
+        doResize(child, newAvailW, child.height)
+        try { (child as any).layoutAlign = 'STRETCH' } catch (_) { }
+        try { (child as any).layoutSizingHorizontal = 'FILL' } catch (_) { }
+      }
 
       let chH = child.height
       if (child.type === 'TEXT') {
@@ -1944,15 +2181,17 @@ async function transformAutoLayoutHorizontal(
         chH = Math.round(newAvailW * aspect)
         doResize(child, newAvailW, chH)
       } else if ('children' in child) {
-        chH = await reflowNode(child, vp, newAvailW, log, true)
-        doResize(child, newAvailW, chH)
+        chH = await reflowNode(child, vp, isBadge ? child.width : newAvailW, log, true)
+        if (!isBadge) {
+          doResize(child, newAvailW, chH)
+        }
       }
-      preserveCardCornerRadius(child, newAvailW, chH)
+      preserveCardCornerRadius(child, isBadge ? child.width : newAvailW, chH)
     }
 
     try {
       node.primaryAxisSizingMode = 'AUTO'
-    } catch (_) {}
+    } catch (_) { }
 
     const totalChildH = kids.reduce((s, c) => s + c.height, 0) + Math.max(0, kids.length - 1) * (node.itemSpacing || 0)
     const expectedH = totalChildH + (node.paddingTop || 0) + (node.paddingBottom || 0)
@@ -1966,7 +2205,23 @@ async function transformAutoLayoutHorizontal(
     // Children fit — preserve HORIZONTAL, just resize node
     // Scale children that have FILL sizing
     for (const child of kids) {
-      if (child.type === 'TEXT') {
+      const isBadge = isBadgeOrPillTag(child) || (child.height <= 36 && child.width <= 160)
+      if (isBadge) {
+        try {
+          (child as any).layoutAlign = 'INHERIT'
+          (child as any).layoutSizingHorizontal = 'HUG'
+          (child as any).layoutSizingVertical = 'HUG'
+          (child as any).primaryAxisSizingMode = 'AUTO'
+          (child as any).counterAxisSizingMode = 'AUTO'
+        } catch (_) { }
+        if ('children' in child) {
+          for (const ck of visibleChildren(child)) {
+            if (ck.type === 'TEXT') {
+              (ck as TextNode).textAutoResize = 'WIDTH_AND_HEIGHT'
+            }
+          }
+        }
+      } else if (child.type === 'TEXT') {
         await reflowTextNode(child as TextNode, Math.min(child.width, newAvailW), vp, log)
       } else if ('children' in child) {
         await reflowNode(child, vp, child.width, log)
@@ -1979,6 +2234,7 @@ async function transformAutoLayoutHorizontal(
     const finalH = Math.max(expectedH, 20)
     doResize(node, targetW, finalH)
     preserveCardCornerRadius(node, targetW, finalH)
+    node.clipsContent = true
 
     log.push(`"${node.name}" [AUTO_LAYOUT_HORIZONTAL]: preserved (children fit)`)
     return finalH
@@ -2052,19 +2308,10 @@ async function transformNavigationNode(
   if (sourceNode.type === 'INSTANCE' && 'detachInstance' in sourceNode && typeof (sourceNode as any).detachInstance === 'function') {
     try {
       sourceNode = (sourceNode as any).detachInstance()
-    } catch (_) {}
+    } catch (_) { }
   }
 
-  // 1. Capture required values BEFORE mutation
-  const originalId = sourceNode.id
   const originalName = sourceNode.name
-  const originalX = nX(sourceNode)
-  const originalY = nY(sourceNode)
-  const originalWidth = sourceNode.width
-  const originalHeight = sourceNode.height
-  const originalLayoutMode = 'layoutMode' in sourceNode ? (sourceNode as FrameNode).layoutMode : 'NONE'
-  const navParent = sourceNode.parent as (BaseNode & ChildrenMixin) | null
-  const parentIndex = navParent && 'children' in navParent ? navParent.children.indexOf(sourceNode) : -1
 
   if (!('children' in sourceNode)) {
     doResize(sourceNode, vp.width, H)
@@ -2074,16 +2321,9 @@ async function transformNavigationNode(
 
   const fr = sourceNode as FrameNode
 
-  // 2. Extract structural nav elements BEFORE modifying the node
+  // Extract structural nav elements BEFORE modifying the node
   const { brandCandidates, navLinkCandidates, actionCandidates, bgNodes } =
     extractNavElements(fr, vp.width, H)
-
-  // Merge any extra nav items discovered from adjacent navigation/links sections
-  for (const extra of extraNavItems) {
-    if (isValidFigmaNode(extra) && !navLinkCandidates.includes(extra)) {
-      navLinkCandidates.push(extra)
-    }
-  }
 
   // Detect icon color from background
   let iconColor: RGB = { r: 0.12, g: 0.14, b: 0.17 }
@@ -2105,43 +2345,18 @@ async function transformNavigationNode(
     }
   }
 
-  // Background paint used for both variants
-  let navBgPaints: Paint[] = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }]
-  if (bgNodes.length > 0 && 'fills' in bgNodes[0]) {
-    const bgFills = (bgNodes[0] as any).fills
-    if (Array.isArray(bgFills) && bgFills.length > 0) navBgPaints = bgFills
-  }
-
-  // 3. Snapshot source structure
-  const snapshot: NavigationSnapshot = {
-    originalId,
-    originalName,
-    originalX,
-    originalY,
-    originalWidth,
-    originalHeight,
-    originalLayoutMode,
-    parent: navParent,
-    parentIndex,
-    brandNode: brandCandidates.length > 0 ? brandCandidates[0] : null,
-    navigationItems: navLinkCandidates,
-    actionItems: actionCandidates,
-    bgNodes,
-    bgPaints: navBgPaints,
-    iconColor,
-  }
-
   if (vp.width >= 768) {
     // ── Tablet / Laptop: simple horizontal reflow ──
     if ('layoutMode' in fr && fr.layoutMode !== 'NONE') fr.layoutMode = 'NONE'
     doResize(fr, vp.width, H)
     fr.clipsContent = false
-    if (snapshot.brandNode && isValidFigmaNode(snapshot.brandNode)) {
-      setPos(snapshot.brandNode, vp.padding, Math.round((H - Math.min(snapshot.brandNode.height, H)) / 2))
+    const brandNode = brandCandidates.length > 0 ? brandCandidates[0] : null
+    if (brandNode && isValidFigmaNode(brandNode)) {
+      setPos(brandNode, vp.padding, Math.round((H - Math.min(brandNode.height, H)) / 2))
     }
     let rightX = vp.width - vp.padding
-    for (let i = snapshot.actionItems.length - 1; i >= 0; i--) {
-      const act = snapshot.actionItems[i]
+    for (let i = actionCandidates.length - 1; i >= 0; i--) {
+      const act = actionCandidates[i]
       if (!isValidFigmaNode(act)) continue
       const aw = Math.min(act.width, 80)
       const ah = Math.min(act.height, H - vp.padding)
@@ -2150,409 +2365,160 @@ async function transformNavigationNode(
       doResize(act, aw, ah)
       rightX -= SPACING.SMALL
     }
-    for (const bg of snapshot.bgNodes) {
+    for (const bg of bgNodes) {
       if (isValidFigmaNode(bg)) {
         setPos(bg, 0, 0)
         doResize(bg, vp.width, H)
       }
     }
-    log.push(`"${snapshot.originalName}" [NAVIGATION]: tablet/laptop horizontal nav, H=${H}px`)
+    log.push(`"${originalName}" [NAVIGATION]: tablet/laptop horizontal nav, H=${H}px`)
     return { height: H, activeNode: fr }
   }
 
   // ──────────────────────────────────────────
-  // MOBILE: Create ComponentSet with Closed + Open variants
+  // MOBILE: Reflow directly in-place inside the page frame!
+  // Preserves single mobile artboard — no off-canvas screens or component sets!
   // ──────────────────────────────────────────
+  if ('layoutMode' in fr && fr.layoutMode !== 'NONE') fr.layoutMode = 'NONE'
+  setPos(fr, 0, nY(fr))
+  doResize(fr, vp.width, H)
+  fr.clipsContent = false
 
-  const allPanelItems = [
-    ...snapshot.navigationItems,
-    ...snapshot.actionItems.filter(a => isButtonLike(a) || a.width > 40),
-  ]
-  const panelLinkH = 48
-  const panelInnerH = allPanelItems.length * (panelLinkH + SPACING.SMALL)
-  const panelH = SPACING.NORMAL + panelInnerH + SPACING.NORMAL
-  const openVariantH = H + panelH
-
-  // Helper: build compact header row using clones
-  async function buildHeaderRow(
-    targetFrame: FrameNode,
-    iconType: 'hamburger' | 'close'
-  ): Promise<void> {
-    if (iconType === 'hamburger') {
-      createHamburgerIcon(targetFrame, vp.padding, Math.round((H - 26) / 2), snapshot.iconColor)
-    } else {
-      const closeIcon = createCloseIcon(snapshot.iconColor)
-      setPos(closeIcon, vp.padding, Math.round((H - 26) / 2))
-      targetFrame.appendChild(closeIcon)
+  // Backgrounds: position at (0, 0) and resize
+  for (const bg of bgNodes) {
+    if (isValidFigmaNode(bg)) {
+      bg.visible = true
+      setPos(bg, 0, 0)
+      doResize(bg, vp.width, H)
     }
+  }
 
-    let brandEndX = vp.padding + 26 + SPACING.SMALL
-    if (snapshot.brandNode && isValidFigmaNode(snapshot.brandNode)) {
-      const brand = safeClone(snapshot.brandNode)
-      try { targetFrame.appendChild(brand) } catch (_) {}
-      brand.visible = true
-      const bH = Math.min(brand.height, H - vp.padding)
-      const bAspect = brand.width / Math.max(1, brand.height)
-      const bW = Math.min(Math.round(vp.width * 0.40), Math.round(bH * bAspect))
-      setPos(brand, brandEndX, Math.round((H - bH) / 2))
-      doResize(brand, bW, bH)
-      if (brand.type === 'TEXT') await reflowTextNode(brand as TextNode, bW, vp)
-      brandEndX += bW + SPACING.SMALL
+  // Identify essential elements
+  const brand = brandCandidates.length > 0 && isValidFigmaNode(brandCandidates[0]) ? brandCandidates[0] : null
+  const cartAction = actionCandidates.find(
+    a => isValidFigmaNode(a) && /(cart|bag|basket|shop|order)/i.test((a.name || '') + ' ' + (a.type === 'TEXT' ? (a as TextNode).characters : ''))
+  )
+  const searchAction = actionCandidates.find(
+    a => isValidFigmaNode(a) && a !== cartAction && /(search|find|lookup)/i.test((a.name || '') + ' ' + (a.type === 'TEXT' ? (a as TextNode).characters : ''))
+  )
+  const otherUtilities = actionCandidates.filter(
+    a => isValidFigmaNode(a) && a !== cartAction && a !== searchAction && !isButtonLike(a) && a.width <= 40 && a.height <= 40
+  )
+  const existingMenuTrigger = actionCandidates.find(a => isValidFigmaNode(a) && isMenuTriggerElement(a))
+
+  // Ensure key elements are direct children of fr if they were nested in a single container
+  const promoteToFr = (node: SceneNode) => {
+    if (isValidFigmaNode(node) && node.parent !== fr && 'appendChild' in fr) {
+      try { fr.appendChild(node) } catch (_) { }
     }
+  }
+  if (brand) promoteToFr(brand)
+  if (cartAction) promoteToFr(cartAction)
+  if (searchAction) promoteToFr(searchAction)
+  if (existingMenuTrigger) promoteToFr(existingMenuTrigger)
+  for (const u of otherUtilities) promoteToFr(u)
 
-    // Header bar allows at most ONE small utility icon (<= 40px) on the right.
-    // All other action buttons (CTAs, Sign-In, etc.) are placed cleanly in the open menu panel!
-    const utilityActions = snapshot.actionItems.filter(
-      a => isValidFigmaNode(a) && !isButtonLike(a) && a.width <= 40 && a.height <= 40
-    )
-    if (utilityActions.length > 0) {
-      const actOrig = utilityActions[utilityActions.length - 1]
-      const act = safeClone(actOrig)
-      try { targetFrame.appendChild(act) } catch (_) {}
+  // Hide non-essential desktop children (desktop text links, desktop search input boxes, etc.)
+  const keepSet = new Set<SceneNode>()
+  for (const bg of bgNodes) keepSet.add(bg)
+  if (brand) keepSet.add(brand)
+  if (cartAction) keepSet.add(cartAction)
+  if (searchAction) keepSet.add(searchAction)
+  if (existingMenuTrigger) keepSet.add(existingMenuTrigger)
+  for (const u of otherUtilities) keepSet.add(u)
+
+  for (const c of safeAllChildren(fr)) {
+    if (!keepSet.has(c)) {
+      try { c.visible = false } catch (_) { }
+    }
+  }
+
+  // 1. Mobile Menu / Hamburger Trigger (on far left)
+  if (existingMenuTrigger) {
+    existingMenuTrigger.visible = true
+    const mw = Math.min(existingMenuTrigger.width, 28)
+    const mh = Math.min(existingMenuTrigger.height, 28)
+    setPos(existingMenuTrigger, vp.padding, Math.round((H - mh) / 2))
+    doResize(existingMenuTrigger, mw, mh)
+  } else {
+    createHamburgerIcon(fr, vp.padding, Math.round((H - 26) / 2), iconColor)
+  }
+
+  // 2. Brand / Logo (next to hamburger)
+  let brandEndX = vp.padding + 26 + SPACING.SMALL
+  if (brand) {
+    brand.visible = true
+    const bH = Math.min(brand.height, H - vp.padding)
+    const bAspect = brand.width / Math.max(1, brand.height)
+    const bW = Math.min(Math.round(vp.width * 0.40), Math.round(bH * bAspect))
+    setPos(brand, brandEndX, Math.round((H - bH) / 2))
+    doResize(brand, bW, bH)
+    if (brand.type === 'TEXT') await reflowTextNode(brand as TextNode, bW, vp)
+    brandEndX += bW + SPACING.SMALL
+  }
+
+  // 3. Header Action Icons (on right: Cart, Search, Utility)
+  let currentRightX = vp.width - vp.padding
+
+  if (cartAction) {
+    cartAction.visible = true
+    const cw = Math.min(cartAction.width, 70)
+    const ch = Math.min(cartAction.height, H - 16)
+    const targetX = currentRightX - cw
+    if (targetX > brandEndX + SPACING.SMALL) {
+      setPos(cartAction, targetX, Math.round((H - ch) / 2))
+      doResize(cartAction, cw, ch)
+      currentRightX = targetX - SPACING.SMALL
+    }
+  }
+
+  if (searchAction) {
+    searchAction.visible = true
+    const sw = Math.min(searchAction.width, 36)
+    const sh = Math.min(searchAction.height, 36)
+    const targetX = currentRightX - sw
+    if (targetX > brandEndX + SPACING.SMALL) {
+      setPos(searchAction, targetX, Math.round((H - sh) / 2))
+      doResize(searchAction, sw, sh)
+      currentRightX = targetX - SPACING.SMALL
+    }
+  }
+
+  if (!cartAction && !searchAction && otherUtilities.length > 0) {
+    const act = otherUtilities[otherUtilities.length - 1]
+    if (isValidFigmaNode(act)) {
+      act.visible = true
       const aw = Math.min(act.width, 32)
       const ah = Math.min(act.height, 32)
-      const targetX = vp.width - vp.padding - aw
+      const targetX = currentRightX - aw
       if (targetX > brandEndX + SPACING.SMALL) {
-        act.visible = true
         setPos(act, targetX, Math.round((H - ah) / 2))
         doResize(act, aw, ah)
       }
     }
   }
 
-  // Helper: build nav links panel using clones
-  async function buildLinksPanel(targetFrame: FrameNode, startY: number): Promise<void> {
-    let linkY = startY + SPACING.NORMAL
-    for (const linkOrig of allPanelItems) {
-      if (!isValidFigmaNode(linkOrig)) continue
-      const linkClone = safeClone(linkOrig)
-      try { targetFrame.appendChild(linkClone) } catch (_) {}
-      linkClone.visible = true
-      const lH = Math.min(linkClone.height, panelLinkH)
-      const lW = vp.width - vp.padding * 2
-      setPos(linkClone, vp.padding, linkY)
-      doResize(linkClone, lW, lH)
-      if (linkClone.type === 'TEXT') {
-        await reflowTextNode(linkClone as TextNode, lW, vp)
-      }
-      linkY += lH + SPACING.SMALL
+  // Containment clamp
+  for (const c of safeChildren(fr)) {
+    if (!isBackgroundNode(c, vp.width, H)) {
+      if (nX(c) + c.width > vp.width) doResize(c, Math.max(8, vp.width - nX(c) - vp.padding), c.height)
+      if (nX(c) < 0) setPos(c, 0, nY(c))
+      if (nY(c) + c.height > H) doResize(c, c.width, Math.max(4, H - nY(c)))
+      if (nY(c) < 0) setPos(c, nX(c), 0)
     }
   }
 
-  let prototypeInteractionCreated = false
+  console.log('[Mobile Navigation]', {
+    navigationDetected: true,
+    navigationItemCount: navLinkCandidates.length,
+    menuTriggerCount: 1,
+    componentCreated: false,
+    initialState: 'closed',
+    prototypeInteractionCreated: false,
+  })
 
-  try {
-    // 5. Create closed variant component
-    const closedComp = figma.createComponent()
-    closedComp.name = 'State=Closed'
-    closedComp.resize(vp.width, H)
-    closedComp.fills = snapshot.bgPaints
-    closedComp.clipsContent = false
-    await buildHeaderRow(closedComp, 'hamburger')
-
-    // 6. Create open variant component
-    const openComp = figma.createComponent()
-    openComp.name = 'State=Open'
-    openComp.resize(vp.width, openVariantH)
-    openComp.fills = snapshot.bgPaints
-    openComp.clipsContent = false
-    await buildHeaderRow(openComp, 'close')
-
-    // Separator line
-    const sep = figma.createRectangle()
-    sep.name = 'Separator'
-    sep.resize(vp.width, 1)
-    sep.fills = [{ type: 'SOLID', color: { r: 0.85, g: 0.85, b: 0.87 } }]
-    setPos(sep, 0, H)
-    openComp.appendChild(sep)
-
-    // 7. Populate panel
-    await buildLinksPanel(openComp, H)
-
-    // Combine into ComponentSet (position master component set off-canvas to the right)
-    const compSet = figma.combineAsVariants([closedComp, openComp], figma.currentPage)
-    compSet.name = 'Mobile Navigation'
-    const parentCanvasX = snapshot.parent && 'x' in snapshot.parent ? (snapshot.parent as any).x : 0
-    const parentCanvasY = snapshot.parent && 'y' in snapshot.parent ? (snapshot.parent as any).y : 0
-    const offCanvasX = parentCanvasX + vp.width + 120
-    setPos(compSet as unknown as SceneNode, offCanvasX, parentCanvasY)
-    compSet.resize(vp.width, openVariantH)
-
-    // 10. Wire prototype interactions on live nodes
-    try {
-      const hamburgerInClosed = closedComp.children.find(c => c.name === 'Mobile Menu Icon')
-      const closeIconInOpen = openComp.children.find(c => c.name === 'Close Menu Icon')
-
-      if (
-        isValidFigmaNode(hamburgerInClosed) &&
-        isValidFigmaNode(openComp) &&
-        'reactions' in hamburgerInClosed
-      ) {
-        const reaction: Reaction = {
-          trigger: { type: 'ON_CLICK' },
-          action: {
-            type: 'NODE',
-            destinationId: openComp.id,
-            navigation: 'CHANGE_TO',
-            transition: {
-              type: 'SMART_ANIMATE',
-              easing: { type: 'EASE_OUT' },
-              duration: 200,
-            },
-            preserveScrollPosition: false,
-          },
-        }
-        ;(hamburgerInClosed as any).reactions = [reaction]
-        prototypeInteractionCreated = true
-      }
-
-      if (
-        isValidFigmaNode(closeIconInOpen) &&
-        isValidFigmaNode(closedComp) &&
-        'reactions' in closeIconInOpen
-      ) {
-        const reaction: Reaction = {
-          trigger: { type: 'ON_CLICK' },
-          action: {
-            type: 'NODE',
-            destinationId: closedComp.id,
-            navigation: 'CHANGE_TO',
-            transition: {
-              type: 'SMART_ANIMATE',
-              easing: { type: 'EASE_IN' },
-              duration: 200,
-            },
-            preserveScrollPosition: false,
-          },
-        }
-        ;(closeIconInOpen as any).reactions = [reaction]
-        prototypeInteractionCreated = true
-      }
-    } catch (_) {
-      console.log('[Mobile Navigation] Prototype interaction unavailable')
-      log.push('[Mobile Navigation] Prototype interaction unavailable')
-    }
-
-    // Insert instance of CLOSED variant into the page
-    const closedInstance = closedComp.createInstance()
-    closedInstance.name = 'Mobile Nav (Closed)'
-
-    const targetParent = snapshot.parent
-    if (targetParent && isValidFigmaNode(targetParent as BaseNode)) {
-      if ('insertChild' in targetParent) {
-        const targetIdx = snapshot.parentIndex >= 0 ? snapshot.parentIndex : 0
-        try {
-          ;(targetParent as any).insertChild(targetIdx, closedInstance)
-        } catch (_) {
-          ;(targetParent as any).appendChild(closedInstance)
-        }
-      } else if ('appendChild' in targetParent) {
-        ;(targetParent as any).appendChild(closedInstance)
-      }
-    }
-    setPos(closedInstance, 0, 0)
-    doResize(closedInstance, vp.width, H)
-
-    // 11. Validate new node before touching old source
-    if (!isValidFigmaNode(closedInstance)) {
-      console.warn('[Navigation] Mobile navigation creation failed; keeping source node')
-      return { height: snapshot.originalHeight, activeNode: sourceNode }
-    }
-
-    // 12. Safe removal of obsolete source node
-    let sourceNodeRemoved = false
-    if (isValidFigmaNode(sourceNode)) {
-      try {
-        sourceNode.locked = false
-        sourceNode.remove()
-        sourceNodeRemoved = true
-      } catch (err) {
-        console.warn('[Navigation] Could not remove obsolete source node', err)
-        try {
-          sourceNode.visible = false
-          sourceNode.locked = false
-          if ('children' in sourceNode) {
-            for (const c of safeAllChildren(sourceNode)) {
-              try { c.visible = false } catch (_) {}
-            }
-          }
-        } catch (_) {}
-      }
-    }
-
-    // 25. Required debug logging
-    console.log('[Mobile Navigation]', {
-      navigationDetected: true,
-      navigationItemCount: snapshot.navigationItems.length,
-      menuTriggerCount: 1,
-      componentCreated: true,
-      initialState: 'closed',
-      prototypeInteractionCreated,
-    })
-
-    console.log('[Mobile Navigation]', {
-      sourceNodeId: snapshot.originalId,
-      sourceNodeRemoved,
-      activeNodeId: closedInstance.id,
-      activeNodeExists: isValidFigmaNode(closedInstance),
-    })
-
-    log.push(
-      `"${snapshot.originalName}" [NAVIGATION]: ComponentSet created (Closed H=${H}px, Open H=${openVariantH}px), ${snapshot.navigationItems.length} links, prototype=${prototypeInteractionCreated}`
-    )
-
-    // 15. Return the new live node
-    return { height: H, activeNode: closedInstance }
-
-  } catch (componentErr) {
-    log.push(`[NAVIGATION] ComponentSet unavailable (${componentErr}), using frame fallback`)
-
-    // Source node is STILL ALIVE here (not removed)
-    if (!isValidFigmaNode(sourceNode)) {
-      return { height: H, activeNode: sourceNode }
-    }
-
-    if ('layoutMode' in fr && fr.layoutMode !== 'NONE') fr.layoutMode = 'NONE'
-    setPos(fr, 0, 0)
-    doResize(fr, vp.width, H)
-    fr.clipsContent = false
-
-    // Hide all existing children
-    for (const c of safeAllChildren(fr)) {
-      try { c.visible = false } catch (_) {}
-    }
-
-    // ONE hamburger button
-    createHamburgerIcon(fr, vp.padding, Math.round((H - 26) / 2), snapshot.iconColor)
-
-    // Brand
-    let brandEndX = vp.padding + 26 + SPACING.SMALL
-    if (snapshot.brandNode && isValidFigmaNode(snapshot.brandNode)) {
-      const brand = snapshot.brandNode
-      try { fr.appendChild(brand) } catch (_) {}
-      brand.visible = true
-      const bH = Math.min(brand.height, H - vp.padding)
-      const bAspect = brand.width / Math.max(1, brand.height)
-      const bW = Math.min(Math.round(vp.width * 0.40), Math.round(bH * bAspect))
-      setPos(brand, brandEndX, Math.round((H - bH) / 2))
-      doResize(brand, bW, bH)
-      if (brand.type === 'TEXT') await reflowTextNode(brand as TextNode, bW, vp)
-      brandEndX += bW + SPACING.SMALL
-    }
-
-    // At most ONE compact utility icon on header bar
-    const fallbackUtility = snapshot.actionItems.filter(
-      a => isValidFigmaNode(a) && !isButtonLike(a) && a.width <= 40 && a.height <= 40
-    )
-    if (fallbackUtility.length > 0) {
-      const act = fallbackUtility[fallbackUtility.length - 1]
-      if (isValidFigmaNode(act)) {
-        try { fr.appendChild(act) } catch (_) {}
-        const aw = Math.min(act.width, 32)
-        const ah = Math.min(act.height, 32)
-        const targetX = vp.width - vp.padding - aw
-        if (targetX > brandEndX + SPACING.SMALL) {
-          act.visible = true
-          setPos(act, targetX, Math.round((H - ah) / 2))
-          doResize(act, aw, ah)
-        }
-      }
-    }
-
-    // Backgrounds
-    for (const bg of snapshot.bgNodes) {
-      if (isValidFigmaNode(bg)) {
-        bg.visible = true
-        setPos(bg, 0, 0)
-        doResize(bg, vp.width, H)
-      }
-    }
-
-    // Menu panel (hidden drawer, one panel for ALL links)
-    if (allPanelItems.length > 0) {
-      const panel = figma.createFrame()
-      panel.name = 'Mobile Menu Panel'
-      panel.resize(vp.width, panelH)
-      panel.fills = snapshot.bgPaints
-      panel.clipsContent = false
-      panel.visible = false
-
-      // Close icon inside panel header
-      const closeIcon = createCloseIcon(snapshot.iconColor)
-      setPos(closeIcon, vp.padding, Math.round((H - 26) / 2))
-      panel.appendChild(closeIcon)
-
-      // All nav links inside ONE panel
-      let linkY = SPACING.NORMAL
-      for (const link of allPanelItems) {
-        if (!isValidFigmaNode(link)) continue
-        try {
-          panel.appendChild(link)
-          link.visible = true
-          const lH = Math.min(link.height, panelLinkH)
-          const lW = vp.width - vp.padding * 2
-          setPos(link, vp.padding, linkY)
-          doResize(link, lW, lH)
-          if (link.type === 'TEXT') await reflowTextNode(link as TextNode, lW, vp)
-          linkY += lH + SPACING.SMALL
-        } catch (_) { link.visible = false }
-      }
-
-      // Place panel off-canvas on current page (not polluting clone page flow)
-      const parentCanvasX = snapshot.parent && 'x' in snapshot.parent ? (snapshot.parent as any).x : 0
-      const parentCanvasY = snapshot.parent && 'y' in snapshot.parent ? (snapshot.parent as any).y : 0
-      const offCanvasX = parentCanvasX + vp.width + 120
-      try {
-        figma.currentPage.appendChild(panel)
-        setPos(panel, offCanvasX, parentCanvasY)
-      } catch (_) {
-        panel.visible = false
-      }
-
-      // Prototype reactions (fallback path)
-      try {
-        const hamburgerBtn = safeAllChildren(fr).find(c => c.name === 'Mobile Menu Icon')
-        if (hamburgerBtn && 'reactions' in hamburgerBtn) {
-          ;(hamburgerBtn as any).reactions = [{
-            trigger: { type: 'ON_CLICK' },
-            action: {
-              type: 'NODE',
-              destinationId: null,
-              navigation: 'OVERLAY',
-              transition: null,
-              preserveScrollPosition: false,
-            },
-          }]
-          prototypeInteractionCreated = true
-        }
-      } catch (_) {}
-    }
-
-    // Containment clamp
-    for (const c of safeChildren(fr)) {
-      if (!isBackgroundNode(c, vp.width, H)) {
-        if (nX(c) + c.width > vp.width) doResize(c, Math.max(8, vp.width - nX(c) - vp.padding), c.height)
-        if (nX(c) < 0) setPos(c, 0, nY(c))
-        if (nY(c) + c.height > H) doResize(c, c.width, Math.max(4, H - nY(c)))
-        if (nY(c) < 0) setPos(c, nX(c), 0)
-      }
-    }
-
-    console.log('[Mobile Navigation]', {
-      navigationDetected: true,
-      navigationItemCount: snapshot.navigationItems.length,
-      menuTriggerCount: 1,
-      componentCreated: false,
-      initialState: 'closed',
-      prototypeInteractionCreated,
-    })
-
-    log.push(
-      `"${snapshot.originalName}" [NAVIGATION]: frame fallback, compact nav H=${H}px, ${snapshot.navigationItems.length} links in ONE panel`
-    )
-
-    return { height: H, activeNode: fr }
-  }
+  log.push(`"${originalName}" [NAVIGATION]: reflowed in-place to mobile header H=${H}px`)
+  return { height: H, activeNode: fr }
 }
 
 // ============================================================
@@ -2591,7 +2557,7 @@ async function transformRepeatedCollection(
   for (const k of allKids) {
     if (isBackgroundNode(k, fr.width, fr.height)) {
       bgNodes.push(k)
-    } else if (k.type === 'TEXT' && k.width > fr.width * 0.40) {
+    } else if (k.type === 'TEXT' || !looksLikeCard(k)) {
       headerNodes.push(k)
     } else {
       collectionItems.push(k)
@@ -2749,14 +2715,14 @@ async function transformSidebarLayout(
   if (sidebarNode.type === 'INSTANCE' && 'detachInstance' in sidebarNode && typeof (sidebarNode as any).detachInstance === 'function') {
     try {
       sidebarNode = (sidebarNode as any).detachInstance()
-    } catch (_) {}
+    } catch (_) { }
   }
 
   for (let m = 0; m < mainNodes.length; m++) {
     if (mainNodes[m].type === 'INSTANCE' && 'detachInstance' in mainNodes[m] && typeof (mainNodes[m] as any).detachInstance === 'function') {
       try {
         mainNodes[m] = (mainNodes[m] as any).detachInstance()
-      } catch (_) {}
+      } catch (_) { }
     }
   }
 
@@ -3064,7 +3030,7 @@ async function transformFooterLayout(
     setPos(bg, 0, 0)
     doResize(bg, containerW, finalH)
     preserveCardCornerRadius(bg, containerW, finalH)
-    try { fr.insertChild(0, bg) } catch (_) {}
+    try { fr.insertChild(0, bg) } catch (_) { }
   }
 
   log.push(`"${node.name}" [FOOTER]: reflowed into vertical flow (${containerW}×${finalH}px)`)
@@ -3074,6 +3040,69 @@ async function transformFooterLayout(
 // ============================================================
 // TRANSFORMER: SINGLE COLUMN (Universal)
 // ============================================================
+
+interface LayoutRow {
+  items: SceneNode[]
+  isSideBySide: boolean
+}
+
+/**
+ * Groups children into rows, preserving side-by-side elements on desktop
+ * (such as sale price + strikethrough price, rating stars + count, swatches, or dual buttons).
+ */
+function groupIntoLayoutRows(kids: SceneNode[], contentW: number, frWidth: number): LayoutRow[] {
+  const rows: LayoutRow[] = []
+  let currentRow: SceneNode[] = []
+
+  for (let i = 0; i < kids.length; i++) {
+    const curr = kids[i]
+    if (currentRow.length === 0) {
+      currentRow.push(curr)
+      continue
+    }
+
+    const prev = currentRow[currentRow.length - 1]
+    const sameY = Math.abs(nY(curr) - nY(prev)) <= 14
+    const totalW = currentRow.reduce((s, k) => s + k.width, 0) + curr.width + currentRow.length * SPACING.SMALL
+
+    // Check if texts are genuinely short inline micro-copy (e.g. price + strikethrough, badge + label)
+    const isShortText = (n: SceneNode): boolean => {
+      if (n.type !== 'TEXT') return false
+      const txt = n as TextNode
+      const charLen = (txt.characters || '').trim().length
+      const fSize = typeof txt.fontSize === 'number' ? txt.fontSize : 16
+      return charLen <= 15 && fSize <= 15
+    }
+
+    const bothShortInlineText = isShortText(curr) && isShortText(prev)
+    const iconAndText = (isIconNode(prev) && curr.type === 'TEXT' && (curr as TextNode).characters.length <= 25) ||
+      (isIconNode(curr) && prev.type === 'TEXT' && (prev as TextNode).characters.length <= 25)
+    const bothIcons = isIconNode(curr) && isIconNode(prev)
+    const bothButtons = isButtonLike(curr) && isButtonLike(prev) && currentRow.length < 2
+    const bothSmallBadges = curr.height <= 32 && prev.height <= 32 && curr.width <= contentW * 0.45 && prev.width <= contentW * 0.45
+
+    // Can they stay on the same line?
+    const bothInline =
+      bothShortInlineText ||
+      iconAndText ||
+      bothIcons ||
+      bothButtons ||
+      bothSmallBadges
+
+    if (sameY && totalW <= contentW && bothInline) {
+      currentRow.push(curr)
+    } else {
+      rows.push({ items: currentRow, isSideBySide: currentRow.length > 1 })
+      currentRow = [curr]
+    }
+  }
+
+  if (currentRow.length > 0) {
+    rows.push({ items: currentRow, isSideBySide: currentRow.length > 1 })
+  }
+
+  return rows
+}
 
 /**
  * Universal single-column transformer.
@@ -3132,7 +3161,7 @@ async function transformSingleColumn(
             await loadFontSafe(textNode.fontName as FontName)
           }
           textNode.textAlignHorizontal = 'CENTER'
-        } catch (_) {}
+        } catch (_) { }
         const tw = vp.width - 24
         await reflowTextNode(textNode, tw, vp)
         const ty = Math.round((barH - textNode.height) / 2)
@@ -3170,34 +3199,54 @@ async function transformSingleColumn(
   // Detect original alignment of children relative to the DESKTOP container
   const alignment = detectAlignmentIntent(fgKids, fr.width)
 
-  // Log alignment for debugging
-  console.log('[Mobile Alignment]', {
-    containerWidth: containerW,
-    contentWidth: contentW,
-    horizontalPadding: ownPaddingL + ownPaddingR,
-    alignment,
-    isCard,
-    childCount: fgKids.length,
-  })
-
   let localY = isCard ? cardPad : (isNestedChild ? 0 : vp.padding)
 
+  // 1. Separate corner overlay badges inside cards (discount badge top-left, wishlist heart top-right)
+  const flowKids: SceneNode[] = []
   for (const kid of orderedKids) {
     if (isDecorativeNode(kid)) {
-      // Decorative elements remain absolute and do not push vertical flow
       const decorW = Math.min(kid.width, contentW)
       const decorX = Math.max(0, Math.min(nX(kid), containerW - decorW))
       setPos(kid, decorX, Math.max(0, Math.min(nY(kid), localY)))
       continue
     }
 
+    if (isCard) {
+      const origX = nX(kid)
+      const origY = nY(kid)
+      const isTopLeftBadge = kid.height <= 36 && kid.width <= 140 && origX <= 40 && origY <= 40
+      const isTopRightHeart = (isIconNode(kid) || (kid.height <= 36 && kid.width <= 48)) && origX >= fr.width - 60 && origY <= 40
+
+      if (isTopLeftBadge) {
+        const badgeW = Math.min(kid.width, contentW)
+        try {
+          (kid as any).layoutSizingHorizontal = 'HUG'
+          (kid as any).layoutSizingVertical = 'HUG'
+          ;(kid as any).primaryAxisSizingMode = 'AUTO'
+          ;(kid as any).counterAxisSizingMode = 'AUTO'
+        } catch (_) { }
+        doResize(kid, badgeW, kid.height)
+        if ('children' in kid) await reflowNode(kid, vp, badgeW, log, true)
+        setPos(kid, 10, 10)
+        continue
+      }
+      if (isTopRightHeart) {
+        setPos(kid, containerW - kid.width - 10, 10)
+        continue
+      }
+    }
+
+    flowKids.push(kid)
+  }
+
+  // Helper to reflow a single flow element
+  async function reflowSingleElement(kid: SceneNode, targetW: number, startX: number, y: number): Promise<number> {
     const kidAlign = getChildAlignment(kid, fr.width, alignment)
 
     if (kid.type === 'TEXT') {
       const textNode = kid as TextNode
-      const textW = contentW
       const origAlign = textNode.textAlignHorizontal
-      const h = await reflowTextNode(textNode, textW, vp, log)
+      const h = await reflowTextNode(textNode, targetW, vp, log)
 
       if (kidAlign === 'CENTER' || origAlign === 'CENTER') {
         try {
@@ -3208,7 +3257,7 @@ async function transformSingleColumn(
             if (rangeFont) await loadFontSafe(rangeFont)
           }
           textNode.textAlignHorizontal = 'CENTER'
-        } catch (_) {}
+        } catch (_) { }
       } else if (kidAlign === 'RIGHT' || origAlign === 'RIGHT') {
         try {
           if (typeof textNode.fontName !== 'symbol') {
@@ -3218,22 +3267,22 @@ async function transformSingleColumn(
             if (rangeFont) await loadFontSafe(rangeFont)
           }
           textNode.textAlignHorizontal = 'RIGHT'
-        } catch (_) {}
+        } catch (_) { }
       } else {
         try {
           if (typeof textNode.fontName !== 'symbol') {
             await loadFontSafe(textNode.fontName as FontName)
           }
           textNode.textAlignHorizontal = origAlign === 'JUSTIFIED' ? 'JUSTIFIED' : 'LEFT'
-        } catch (_) {}
+        } catch (_) { }
       }
 
-      setPos(textNode, baseX, localY)
-      localY += Math.max(h, textNode.height) + SPACING.NORMAL
+      setPos(textNode, startX, y)
+      return Math.max(h, textNode.height)
 
     } else if (isButtonLike(kid)) {
-      const btnW = Math.min(Math.max(kid.width, 160), contentW)
-      const btnH = Math.min(Math.max(kid.height, 40), 52)
+      const btnW = isCard ? targetW : Math.min(Math.max(kid.width, 160), targetW)
+      const btnH = isCard ? Math.min(Math.max(kid.height, 36), 44) : Math.min(Math.max(kid.height, 40), 52)
       doResize(kid, btnW, btnH)
 
       if ('children' in kid) {
@@ -3245,81 +3294,134 @@ async function transformSingleColumn(
                 await loadFontSafe(txt.fontName as FontName)
               }
               txt.textAlignHorizontal = 'CENTER'
-            } catch (_) {}
+            } catch (_) { }
             await reflowTextNode(txt, btnW, vp)
+            txt.textAutoResize = 'WIDTH_AND_HEIGHT'
             const txtY = Math.round((btnH - txt.height) / 2)
-            setPos(txt, 0, Math.max(0, txtY))
+            setPos(txt, Math.max(0, Math.round((btnW - txt.width) / 2)), Math.max(0, txtY))
           }
         }
       }
 
+      try {
+        (kid as any).layoutSizingHorizontal = isCard ? 'FILL' : 'HUG'
+        (kid as any).layoutSizingVertical = 'HUG'
+      } catch (_) { }
+
       preserveCardCornerRadius(kid, btnW, btnH)
-      const x = alignedX(btnW, contentW, baseX, kidAlign)
-      setPos(kid, x, localY)
-      localY += btnH + SPACING.NORMAL
+      const x = isCard ? startX : alignedX(btnW, targetW, startX, kidAlign)
+      setPos(kid, x, y)
+      return btnH
 
     } else if (isImageNode(kid)) {
       const origW = kid.width, origH = kid.height
-      const aspect = origH / Math.max(1, origW)
-      // If it's a card image, span full width of the card edge-to-edge
+      const rawAspect = origH / Math.max(1, origW)
+      // For cards, clamp aspect ratio between 0.75 and 1.25 for clean square or apparel portrait
+      const aspect = isCard ? Math.min(Math.max(rawAspect, 0.75), 1.25) : rawAspect
       const isCardImage = isCard && (origW >= fr.width * 0.70 || nY(kid) <= 12)
       const isSubstantialImg = origW >= 140 || origW >= fr.width * 0.25 || origH >= 100
-      const imgW = isCardImage ? containerW : (isSubstantialImg ? contentW : Math.min(origW, contentW))
+      const imgW = isCardImage ? containerW : (isSubstantialImg ? targetW : Math.min(origW, targetW))
       const maxH = Math.round(vp.width * 0.90)
       const imgH = Math.min(Math.round(imgW * aspect), maxH)
 
       doResize(kid, imgW, imgH)
       preserveCardCornerRadius(kid, imgW, imgH)
-      const x = isCardImage ? 0 : (imgW >= contentW * 0.90 ? baseX : alignedX(imgW, contentW, baseX, kidAlign))
-      setPos(kid, x, localY)
-      localY += imgH + SPACING.NORMAL
+      const x = isCardImage ? 0 : (imgW >= targetW * 0.90 ? startX : alignedX(imgW, targetW, startX, kidAlign))
+      setPos(kid, x, y)
+      return imgH
 
     } else if (isIconNode(kid)) {
-      const x = alignedX(kid.width, contentW, baseX, kidAlign)
-      setPos(kid, x, localY)
-      localY += kid.height + SPACING.SMALL
+      const x = alignedX(kid.width, targetW, startX, kidAlign)
+      setPos(kid, x, y)
+      return kid.height
 
     } else if ('children' in kid) {
-      // Small badge, chip, or tag (e.g. "NEW", "BETA", "HOT")
-      const isSmallBadge = kid.height <= 36 && kid.width <= 140 && visibleChildren(kid).length <= 2
-      const origX = nX(kid)
-      const origY = nY(kid)
-      const isCornerOverlayBadge = isCard && isSmallBadge && origX <= 28 && origY <= 28
-
-      if (isCornerOverlayBadge) {
-        // Overlay badge sits in the corner over the card image without shifting content flow
-        const targetBadgeW = Math.min(kid.width, contentW)
-        doResize(kid, targetBadgeW, kid.height)
-        await reflowNode(kid, vp, targetBadgeW, log, true)
-        setPos(kid, 12, 12)
-        continue
+      if (isVisualMediaComposite(kid)) {
+        const mh = scaleVisualMediaComposite(kid, targetW, vp)
+        setPos(kid, startX, y)
+        return mh
       }
 
-      const targetCardW = isSmallBadge ? Math.min(kid.width, contentW) : contentW
+      const isBadge = isBadgeOrPillTag(kid) || (kid.height <= 36 && kid.width <= 160 && visibleChildren(kid).length <= 2)
+      const targetCardW = isBadge ? Math.min(kid.width, targetW) : targetW
 
-      doResize(kid, targetCardW, kid.height)
+      if (isBadge) {
+        try {
+          (kid as any).layoutSizingHorizontal = 'HUG'
+          (kid as any).layoutSizingVertical = 'HUG'
+          (kid as any).primaryAxisSizingMode = 'AUTO'
+          (kid as any).counterAxisSizingMode = 'AUTO'
+        } catch (_) { }
+        for (const bc of visibleChildren(kid)) {
+          if (bc.type === 'TEXT') {
+            (bc as TextNode).textAutoResize = 'WIDTH_AND_HEIGHT'
+          }
+        }
+      } else {
+        doResize(kid, targetCardW, kid.height)
+      }
+
       const h = await reflowNode(kid, vp, targetCardW, log, true)
       const fgSubKids = visibleChildren(kid).filter(c => !isBackgroundNode(c, kid.width, kid.height) && !isDecorativeNode(c))
       const maxSubBottom = fgSubKids.length > 0 ? Math.max(...fgSubKids.map(c => nY(c) + c.height)) : 0
-      const actualH = Math.max(h, maxSubBottom + (isCard ? 14 : 0), 20)
+      const actualH = isBadge ? Math.max(h, kid.height) : Math.max(h, maxSubBottom + (isCard ? 14 : 0), 20)
 
-      doResize(kid, targetCardW, actualH)
+      if (!isBadge) {
+        doResize(kid, targetCardW, actualH)
+      } else {
+        try {
+          (kid as any).layoutSizingHorizontal = 'HUG'
+          (kid as any).layoutSizingVertical = 'HUG'
+          ;(kid as any).primaryAxisSizingMode = 'AUTO'
+          ;(kid as any).counterAxisSizingMode = 'AUTO'
+        } catch (_) { }
+      }
       preserveCardCornerRadius(kid, targetCardW, actualH)
 
-      const x = isSmallBadge ? alignedX(targetCardW, contentW, baseX, kidAlign) : baseX
-      setPos(kid, x, localY)
-
-      // Gap after cards: 20px between stacked cards
-      const gapAfter = looksLikeCard(kid) ? 20 : SPACING.NORMAL
-      localY += actualH + gapAfter
+      const x = isBadge ? alignedX(targetCardW, targetW, startX, kidAlign) : startX
+      setPos(kid, x, y)
+      return actualH
 
     } else {
       const isDivider = kid.height <= 4 && kid.width >= fr.width * 0.50
-      const w = isDivider ? contentW : Math.min(kid.width, contentW)
+      const w = isDivider ? targetW : Math.min(kid.width, targetW)
       doResize(kid, w, kid.height)
-      const x = isDivider ? baseX : alignedX(w, contentW, baseX, kidAlign)
-      setPos(kid, x, localY)
-      localY += kid.height + SPACING.NORMAL
+      const x = isDivider ? startX : alignedX(w, targetW, startX, kidAlign)
+      setPos(kid, x, y)
+      return kid.height
+    }
+  }
+
+  // 2. Group items into layout rows (detecting side-by-side elements like prices, ratings, or dual buttons)
+  const rows = groupIntoLayoutRows(flowKids, contentW, fr.width)
+
+  for (const row of rows) {
+    if (row.isSideBySide && row.items.length >= 2) {
+      // Side-by-side row: place items horizontally on the same line
+      const allButtons = row.items.every(k => isButtonLike(k))
+      const btnW = allButtons
+        ? Math.floor((contentW - (row.items.length - 1) * SPACING.SMALL) / row.items.length)
+        : 0
+
+      let curX = baseX
+      let maxRowH = 0
+
+      for (let idx = 0; idx < row.items.length; idx++) {
+        const item = row.items[idx]
+        const itemW = allButtons ? btnW : Math.min(item.width, contentW - (curX - baseX))
+        const h = await reflowSingleElement(item, itemW, curX, localY)
+        maxRowH = Math.max(maxRowH, h, item.height)
+        curX += (allButtons ? btnW : item.width) + SPACING.SMALL
+      }
+
+      localY += maxRowH + (isCard ? 6 : SPACING.NORMAL)
+    } else {
+      // Single element in row
+      const singleItem = row.items[0]
+      const h = await reflowSingleElement(singleItem, contentW, baseX, localY)
+      const isImage = isImageNode(singleItem)
+      const gapAfter = isCard ? (isImage ? 8 : (looksLikeCard(singleItem) ? 14 : 6)) : (looksLikeCard(singleItem) ? 20 : SPACING.NORMAL)
+      localY += h + gapAfter
     }
   }
 
@@ -3332,7 +3434,7 @@ async function transformSingleColumn(
     setPos(bg, 0, 0)
     doResize(bg, finalContainerW, finalH)
     preserveCardCornerRadius(bg, finalContainerW, finalH)
-    try { fr.insertChild(0, bg) } catch (_) {}
+    try { fr.insertChild(0, bg) } catch (_) { }
   }
 
   log.push(`"${node.name}" [SINGLE_COLUMN|${alignment}]: ${fgKids.length} items stacked (${finalH}px, nested=${isNestedChild}, card=${isCard})`)
@@ -3374,6 +3476,13 @@ async function reflowNode(
     const h = Math.min(Math.round(w * aspect), maxH)
     doResize(node, w, h)
     preserveCardCornerRadius(node, w, h)
+    return h
+  }
+
+  // Visual Media Composite (Mockup devices, product showcases, illustrations)
+  if (isVisualMediaComposite(node)) {
+    const h = scaleVisualMediaComposite(node, parentW, vp)
+    if (log) log.push(`"${node.name}" [VISUAL_COMPOSITE]: scaled proportionally to ${node.width}×${h}px`)
     return h
   }
 
@@ -3503,17 +3612,19 @@ function auditAndFixOffFrameContent(clone: FrameNode, log: string[]): void {
       fixCount++
     }
 
-    const maxChildBottom = Math.max(...flowKids.map(c => nY(c) + c.height))
-    if (maxChildBottom > frame.height + 40) {
-      const newH = Math.min(maxChildBottom + 16, 2500)
-      doResize(frame, frame.width, newH)
-      for (const c of safeAllChildren(frame)) {
-        if (isBackgroundNode(c, frame.width, newH)) {
-          setPos(c, 0, 0)
-          doResize(c, frame.width, newH)
+    if (frame !== clone) {
+      const maxChildBottom = Math.max(...flowKids.map(c => nY(c) + c.height))
+      if (maxChildBottom > frame.height + 40) {
+        const newH = Math.min(maxChildBottom + 16, 2500)
+        doResize(frame, frame.width, newH)
+        for (const c of safeAllChildren(frame)) {
+          if (isBackgroundNode(c, frame.width, newH)) {
+            setPos(c, 0, 0)
+            doResize(c, frame.width, newH)
+          }
         }
+        fixCount++
       }
-      fixCount++
     }
 
     // Do NOT recurse into INSTANCE sublayers
@@ -3528,7 +3639,7 @@ function auditAndFixOffFrameContent(clone: FrameNode, log: string[]): void {
 
   try {
     inspectFrame(clone)
-  } catch (_) {}
+  } catch (_) { }
   if (fixCount > 0) log.push(`Off-frame audit: ${fixCount} containers adjusted`)
 }
 
@@ -3544,6 +3655,18 @@ function validateAndClampLayout(clone: FrameNode, vp: RVP, log: string[]): void 
     try {
       let x = nX(node)
       let w = node.width
+
+      // Text nodes must be managed via reflowTextNode, never squashed via doResize!
+      if (node.type === 'TEXT') {
+        if (x < 0) { setPos(node, 0, nY(node)); clampCount++ }
+        if (x >= maxW) { setPos(node, vp.padding, nY(node)); clampCount++ }
+        if (node.width > maxW || x + node.width > maxW + 4) {
+          const availW = Math.max(40, maxW - nX(node))
+          reflowTextNode(node as TextNode, availW, vp)
+          clampCount++
+        }
+        return
+      }
 
       // 1. Negative X: move to 0
       if (x < 0) {
@@ -3577,9 +3700,16 @@ function validateAndClampLayout(clone: FrameNode, vp: RVP, log: string[]): void 
           setPos(node, shiftX, nY(node))
           x = shiftX
         } else {
-          const allowedW = Math.max(10, maxW - x)
-          doResize(node, allowedW, node.height)
-          w = allowedW
+          const allowedW = maxW - x
+          if (allowedW < 60) {
+            setPos(node, 0, nY(node))
+            x = 0
+            doResize(node, maxW, node.height)
+            w = maxW
+          } else {
+            doResize(node, allowedW, node.height)
+            w = allowedW
+          }
         }
         clampCount++
       }
@@ -3592,14 +3722,14 @@ function validateAndClampLayout(clone: FrameNode, vp: RVP, log: string[]): void 
           checkNode(c, node.width)
         }
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   try {
     for (const c of safeChildren(clone)) {
       checkNode(c, vp.width)
     }
-  } catch (_) {}
+  } catch (_) { }
 
   if (clampCount > 0) {
     log.push(`Validation: ${clampCount} elements reflowed & clamped to mobile viewport`)
@@ -3681,6 +3811,11 @@ export function synthesizeVisualBands(
   if (kids.length < 8) return
 
   // Check if children are already organized into section frames
+  const sectionContainers = kids.filter(k => (k.type === 'FRAME' || k.type === 'GROUP' || k.type === 'SECTION') && k.height >= 40)
+  if (sectionContainers.length >= 3) {
+    return
+  }
+
   const fullWidthSections = kids.filter(k => k.width >= origW * 0.70)
   if (fullWidthSections.length >= kids.length * 0.40) {
     return
@@ -3760,7 +3895,6 @@ export function synthesizeVisualBands(
       const bW = origW
       const bH = Math.max(30, cluster.maxY - cluster.minY)
       bandFrame.resize(bW, bH)
-      setPos(bandFrame, 0, cluster.minY)
       bandFrame.layoutMode = 'NONE'
       bandFrame.clipsContent = false
 
@@ -3772,6 +3906,7 @@ export function synthesizeVisualBands(
       }
 
       root.appendChild(bandFrame)
+      setPos(bandFrame, 0, cluster.minY)
     } catch (e) {
       console.warn('[SynthesizeBands] Failed to wrap cluster:', e)
     }
@@ -3863,7 +3998,7 @@ async function transformModalDialog(
   for (const bg of bgNodes) {
     setPos(bg, 0, 0)
     doResize(bg, vp.width, canvasH)
-    try { root.insertChild(0, bg) } catch (_) {}
+    try { root.insertChild(0, bg) } catch (_) { }
   }
 
   log.push(`[MODAL_DIALOG]: Dialog ${targetModalW}×${finalModalH}px centered on canvas ${vp.width}×${canvasH}px`)
@@ -3911,22 +4046,43 @@ export async function applyResponsiveEngine(
   }
 
   // ---- STAGE 1: Normalize root frame ----
-  // If the root frame uses Auto Layout, snapshot child positions and remove it.
+  // If the root frame uses Auto Layout, normalize child positions and remove it.
   if ('layoutMode' in clone && clone.layoutMode !== 'NONE') {
+    const isVertical = clone.layoutMode === 'VERTICAL'
+    const padT = clone.paddingTop || 0
+    const padL = clone.paddingLeft || 0
+    const spacing = clone.itemSpacing || 0
     const kids = safeChildren(clone)
-    const snapshot = kids.map(c => ({
-      node: c,
-      x: nX(c),
-      y: nY(c),
-      w: c.width,
-      h: c.height,
-    }))
+
+    // Normalize constraints FIRST so turning off AL or resizing doesn't displace nodes
+    for (const c of kids) {
+      try { (c as any).constraints = { horizontal: 'MIN', vertical: 'MIN' } } catch (_) {}
+    }
+
     clone.layoutMode = 'NONE'
-    for (const item of snapshot) {
-      setPos(item.node, item.x, item.y)
-      doResize(item.node, item.w, item.h)
+
+    if (isVertical) {
+      // In VERTICAL Auto Layout, kids array is ALREADY the natural top-to-bottom visual sequence
+      let curY = padT
+      for (const c of kids) {
+        setPos(c, padL, curY)
+        curY += c.height + spacing
+      }
+    } else {
+      let curX = padL
+      for (const c of kids) {
+        setPos(c, curX, padT)
+        curX += c.width + spacing
+      }
     }
     log.push(`Root frame Auto Layout normalized to free positioning`)
+  } else {
+    // For free-positioned frames, normalize constraints to MIN/MIN
+    // so clone.resize(vp.width, origH) doesn't cause Figma to move/scale children
+    const kids = safeChildren(clone)
+    for (const c of kids) {
+      try { (c as any).constraints = { horizontal: 'MIN', vertical: 'MIN' } } catch (_) {}
+    }
   }
 
   // ---- STAGE 1.5: Visual Band Synthesizer for loose layers ----
@@ -3938,17 +4094,79 @@ export async function applyResponsiveEngine(
 
   // ---- STAGE 2: Get top-level visible sections ----
   const topLevelKids = safeChildren(clone)
-    .sort((a, b) => nY(a) - nY(b))
+    .sort((a, b) => {
+      const dy = nY(a) - nY(b)
+      if (Math.abs(dy) > 2) return dy
+      return nX(a) - nX(b)
+    })
 
   if (topLevelKids.length === 0) {
     log.push(`No visible top-level children. Nothing to reflow.`)
     return
   }
 
-  log.push(`Top-level sections: ${topLevelKids.length}`)
+  // ---- STAGE 2.5: Absorb loose section background shapes into overlying content frames ----
+  // Designers often draw full-width background rectangles (e.g. dark footer bg) as loose siblings
+  // on the canvas behind the content frame. Pair them up so the section keeps its background on mobile.
+  const absorbedNodes = new Set<SceneNode>()
+  for (let i = 0; i < topLevelKids.length; i++) {
+    const sec = topLevelKids[i]
+    if (!isValidFigmaNode(sec) || absorbedNodes.has(sec)) continue
+
+    for (let j = 0; j < topLevelKids.length; j++) {
+      if (i === j) continue
+      const candidate = topLevelKids[j]
+      if (!isValidFigmaNode(candidate) || absorbedNodes.has(candidate)) continue
+
+      const isShape = candidate.type === 'RECTANGLE' || candidate.type === 'VECTOR' ||
+        (candidate.type === 'FRAME' && (!('children' in candidate) || visibleChildren(candidate).length === 0))
+      const hasFill = hasVisibleFillOrStroke(candidate)
+      const hasText = hasTextContent(candidate)
+      const isWide = candidate.width >= origW * 0.70
+
+      if (isShape && hasFill && !hasText && isWide) {
+        const candY1 = nY(candidate)
+        const candY2 = candY1 + candidate.height
+        const secY1 = nY(sec)
+        const secY2 = secY1 + sec.height
+
+        const overlapY = Math.max(0, Math.min(candY2, secY2) - Math.max(candY1, secY1))
+        if (overlapY >= Math.min(candidate.height * 0.50, sec.height * 0.50)) {
+          if ('children' in sec && 'insertChild' in sec) {
+            try {
+              ;(sec as FrameNode).insertChild(0, candidate)
+              setPos(candidate, 0, 0)
+              doResize(candidate, sec.width, sec.height)
+              absorbedNodes.add(candidate)
+              log.push(`Absorbed background "${candidate.name}" into section "${sec.name}"`)
+            } catch (_) {
+              if ('fills' in sec && 'fills' in candidate) {
+                try {
+                  ;(sec as any).fills = (candidate as any).fills
+                  absorbedNodes.add(candidate)
+                  candidate.remove()
+                } catch (_) {}
+              }
+            }
+          } else if ('fills' in sec && 'fills' in candidate) {
+            try {
+              ;(sec as any).fills = (candidate as any).fills
+              absorbedNodes.add(candidate)
+              candidate.remove()
+            } catch (_) {}
+          }
+        }
+      }
+    }
+  }
+
+  const liveTopSections = topLevelKids.filter(k => !absorbedNodes.has(k) && isValidFigmaNode(k))
+  log.push(`Top-level sections: ${liveTopSections.length}`)
 
   // ---- STAGE 3: Detect sidebar layout at the page level ----
-  const sidebarResult = detectSidebarLayout(topLevelKids, origW, origH)
+  const sidebarResult = (archetype === 'LANDING_PAGE' || archetype === 'E_COMMERCE')
+    ? { hasSidebar: false, sidebarNode: null, mainContentNodes: liveTopSections }
+    : detectSidebarLayout(liveTopSections, origW, origH)
 
   if (sidebarResult.hasSidebar && sidebarResult.sidebarNode) {
     log.push(`Sidebar detected: "${sidebarResult.sidebarNode.name}" + ${sidebarResult.mainContentNodes.length} main sections`)
@@ -3964,20 +4182,9 @@ export async function applyResponsiveEngine(
     let currentY = 0
     let hasNavTransformed = false
 
-    for (let i = 0; i < topLevelKids.length; i++) {
-      let section = topLevelKids[i]
+    for (let i = 0; i < liveTopSections.length; i++) {
+      let section = liveTopSections[i]
       if (!isValidFigmaNode(section)) continue
-
-      if (hasNavTransformed && isNavLinksSection(section, origH, nY(section))) {
-        log.push(`"${section.name}": navigation items consumed into mobile list button (removed from page)`)
-        section.locked = false
-        try {
-          section.remove()
-        } catch (_) {
-          section.visible = false
-        }
-        continue
-      }
 
       // Position section at current Y
       setPos(section, 0, currentY)
@@ -4004,21 +4211,10 @@ export async function applyResponsiveEngine(
           sectionH = await transformAutoLayoutHorizontal(section as FrameNode, vp.width, vp, log)
           break
         case 'NAVIGATION': {
-          const extraNavItems: SceneNode[] = []
-          for (let j = i + 1; j < topLevelKids.length; j++) {
-            const nextSec = topLevelKids[j]
-            if (!isValidFigmaNode(nextSec)) continue
-            if (isNavLinksSection(nextSec, origH, nY(nextSec))) {
-              extraNavItems.push(...extractSecondaryNavItems(nextSec))
-            } else {
-              break
-            }
-          }
-
-          const navRes = await transformNavigationNode(section, vp, log, extraNavItems)
+          const navRes = await transformNavigationNode(section, vp, log)
           sectionH = navRes.height
           activeSection = navRes.activeNode
-          topLevelKids[i] = activeSection
+          liveTopSections[i] = activeSection
           hasNavTransformed = true
           break
         }
@@ -4058,7 +4254,7 @@ export async function applyResponsiveEngine(
               setPos(bg, 0, 0)
               doResize(bg, vp.width, sectionH)
               preserveCardCornerRadius(bg, vp.width, sectionH)
-              try { fr.insertChild(0, bg) } catch (_) {}
+              try { fr.insertChild(0, bg) } catch (_) { }
             }
           }
         }
@@ -4073,7 +4269,7 @@ export async function applyResponsiveEngine(
     auditAndFixOffFrameContent(clone, log)
 
     // ---- STAGE 6: Overlap & Spacing Alignment ----
-    const liveTopLevelKids = topLevelKids.filter(k => isNodeValidAndVisible(k))
+    const liveTopLevelKids = liveTopSections.filter(k => isNodeValidAndVisible(k))
     verifyAndCorrectSectionOverlaps(liveTopLevelKids, log)
   }
 

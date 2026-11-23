@@ -90,6 +90,42 @@ class MockNode {
     this._y = Math.round(val)
   }
 
+  get layoutSizingHorizontal() {
+    if (this._layoutSizingHorizontal !== undefined) return this._layoutSizingHorizontal
+    if (this.layoutMode === 'HORIZONTAL') {
+      return this.primaryAxisSizingMode === 'AUTO' ? 'HUG' : 'FIXED'
+    } else if (this.layoutMode === 'VERTICAL') {
+      return this.counterAxisSizingMode === 'AUTO' ? 'HUG' : 'FIXED'
+    }
+    return 'FIXED'
+  }
+  set layoutSizingHorizontal(val) {
+    this._layoutSizingHorizontal = val
+    if (this.layoutMode === 'HORIZONTAL') {
+      this.primaryAxisSizingMode = (val === 'HUG') ? 'AUTO' : 'FIXED'
+    } else if (this.layoutMode === 'VERTICAL') {
+      this.counterAxisSizingMode = (val === 'HUG') ? 'AUTO' : 'FIXED'
+    }
+  }
+
+  get layoutSizingVertical() {
+    if (this._layoutSizingVertical !== undefined) return this._layoutSizingVertical
+    if (this.layoutMode === 'VERTICAL') {
+      return this.primaryAxisSizingMode === 'AUTO' ? 'HUG' : 'FIXED'
+    } else if (this.layoutMode === 'HORIZONTAL') {
+      return this.counterAxisSizingMode === 'AUTO' ? 'HUG' : 'FIXED'
+    }
+    return 'FIXED'
+  }
+  set layoutSizingVertical(val) {
+    this._layoutSizingVertical = val
+    if (this.layoutMode === 'VERTICAL') {
+      this.primaryAxisSizingMode = (val === 'HUG') ? 'AUTO' : 'FIXED'
+    } else if (this.layoutMode === 'HORIZONTAL') {
+      this.counterAxisSizingMode = (val === 'HUG') ? 'AUTO' : 'FIXED'
+    }
+  }
+
   detachInstance() {
     this.type = 'FRAME'
     for (const c of this.children) {
@@ -874,6 +910,431 @@ await testCase('Real-World Long Landing Page: 2-Col Hero, Multi-Col Features, 4-
 
   // E. Hero illustration must be constrained to mobile width
   assert.ok(heroImg.width <= 350, `Hero image must be scaled to mobile width (<= 350px), got ${heroImg.width}px`)
+})
+
+// ----------------------------------------------------
+// TEST 13: Real-World E-Commerce Landing Page (Nested Cards, Price/Rating Rows, Overlays, Cart Header)
+// ----------------------------------------------------
+await testCase('Real-World E-Commerce: Nested Product Cards, Preserved Rows, Overlays & Cart Header', async () => {
+  const root = new MockNode('FRAME', 'Pelican E-Commerce Store', 1440, 2000)
+
+  // Header with Logo, Nav links, Search, and Cart
+  const header = new MockNode('FRAME', 'Header Nav', 1440, 72)
+  header.appendChild(createText('Brand Logo', 'PELICAN GEAR', 24, 180, 28, 40, 22))
+  header.appendChild(createText('Nav 1', 'Drinkware', 15, 80, 20, 260, 26))
+  header.appendChild(createText('Nav 2', 'Coolers', 15, 70, 20, 360, 26))
+  header.appendChild(createText('Search', '🔍 Search', 14, 80, 20, 1180, 26))
+  header.appendChild(createText('Cart Action', '🛒 Cart (3)', 15, 90, 20, 1280, 26))
+  root.appendChild(header)
+
+  // Hero with Dual Buttons + Product Showcase Mockup
+  const hero = new MockNode('FRAME', 'Hero Section', 1440, 520)
+  hero.x = 0; hero.y = 72
+  hero.appendChild(createText('Hero Title', 'Drinkware & Ice Cooler for every occasion', 54, 600, 64, 40, 60))
+  hero.appendChild(createText('Hero Subhead', 'Premium custom corporate drinkware built for extreme durability.', 18, 540, 28, 40, 210))
+  const btnRow = new MockNode('FRAME', 'CTA Button Row', 340, 50)
+  btnRow.x = 40; btnRow.y = 280
+  btnRow.appendChild(createButton('Btn1', 'Shop Bottles', 160, 48, 0, 0))
+  btnRow.appendChild(createButton('Btn2', 'Shop Tumblers', 160, 48, 180, 0))
+  hero.appendChild(btnRow)
+
+  // Visual Product Mockup on right
+  const mockup = new MockNode('FRAME', 'Hero Product Showcase Mockup', 550, 420)
+  mockup.x = 800; mockup.y = 50
+  mockup.appendChild(createImage('Bottle Render', 400, 380, 50, 20))
+  mockup.appendChild(createButton('Badge', 'NEW 2026', 90, 28, 60, 40))
+  hero.appendChild(mockup)
+  root.appendChild(hero)
+
+  // 4-Column Product Grid (Nested Cards)
+  const gridSection = new MockNode('FRAME', 'Featured Products Grid', 1440, 800)
+  gridSection.x = 0; gridSection.y = 600
+  gridSection.appendChild(createText('Grid Title', 'Best Selling Tumblers', 32, 400, 40, 40, 20))
+
+  const testProducts = [
+    { title: '26oz Pacific Tumbler', sale: '$34.00', orig: '$45.00' },
+    { title: '40oz Porter Dual Lid', sale: '$42.00', orig: '$55.00' },
+    { title: '18oz Ridge Travel Mug', sale: '$28.00', orig: '$38.00' },
+    { title: '32oz Expedition Flask', sale: '$39.00', orig: '$49.00' },
+  ]
+
+  testProducts.forEach((p, idx) => {
+    const card = new MockNode('FRAME', `Product Card ${idx + 1}`, 310, 440)
+    card.x = 40 + idx * 340
+    card.y = 80
+    card.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 }, visible: true }]
+
+    // Image container with discount tag & heart overlays
+    const imgContainer = new MockNode('FRAME', 'Image Container', 310, 260)
+    imgContainer.x = 0; imgContainer.y = 0
+    imgContainer.appendChild(createImage('Tumbler Photo', 310, 260, 0, 0))
+    imgContainer.appendChild(createButton('Discount Tag', '-25%', 54, 24, 10, 10))
+    imgContainer.appendChild(createButton('Heart Icon', '♥', 32, 32, 268, 10))
+    card.appendChild(imgContainer)
+
+    // Details container
+    const details = new MockNode('FRAME', 'Product Details', 290, 160)
+    details.x = 10; details.y = 270
+    details.appendChild(createText('Title', p.title, 16, 280, 22, 0, 0))
+
+    // Rating row (stars + review count side-by-side)
+    const ratingRow = new MockNode('FRAME', 'Rating Row', 180, 22)
+    ratingRow.x = 0; ratingRow.y = 30
+    ratingRow.appendChild(createText('Stars', '★★★★★', 14, 75, 18, 0, 0))
+    ratingRow.appendChild(createText('Count', '4.9 (128)', 13, 65, 18, 80, 0))
+    details.appendChild(ratingRow)
+
+    // Price row (sale price + orig price side-by-side)
+    const priceRow = new MockNode('FRAME', 'Price Row', 180, 26)
+    priceRow.x = 0; priceRow.y = 60
+    priceRow.appendChild(createText('Sale Price', p.sale, 18, 70, 24, 0, 0))
+    priceRow.appendChild(createText('Orig Price', p.orig, 14, 60, 20, 78, 2))
+    details.appendChild(priceRow)
+
+    details.appendChild(createButton('Add to Cart', 'Add to Cart', 280, 38, 0, 100))
+    card.appendChild(details)
+
+    gridSection.appendChild(card)
+  })
+
+  root.appendChild(gridSection)
+
+  const log = []
+  await applyResponsiveEngine(root, 'mobile', log)
+
+  // 1. Frame converted to mobile 390px
+  assert.strictEqual(root.width, 390, 'Root frame must be 390px wide')
+
+  // 2. Archetype detection
+  const detectedArchetype = detectScreenArchetype(root, 1440, 2000)
+  assert.strictEqual(detectedArchetype, 'E_COMMERCE', 'Must detect E_COMMERCE archetype')
+
+  // 3. Grid cards reflow into 2 columns on mobile
+  const liveGrid = root.children.find(c => c.name === 'Featured Products Grid')
+  assert.ok(liveGrid, 'Grid section must exist')
+  const cardsInGrid = liveGrid.children.filter(c => c.name && c.name.startsWith('Product Card'))
+  assert.strictEqual(cardsInGrid.length, 4, 'Must contain all 4 product cards')
+
+  // Card 1 and Card 2 should be in row 1 side-by-side (2-column layout!)
+  assert.ok(cardsInGrid[0].x < cardsInGrid[1].x, 'Card 1 and Card 2 must be side-by-side in 2-col grid')
+  assert.strictEqual(cardsInGrid[0].y, cardsInGrid[1].y, 'Card 1 and Card 2 must share same row Y')
+  assert.ok(cardsInGrid[0].width <= 180, `Card width in 2-col grid must be ~169px, got ${cardsInGrid[0].width}px`)
+
+  // 4. Compact card height: card must NOT balloon to 700px tall
+  assert.ok(cardsInGrid[0].height <= 480, `Card height must be compact (<= 480px), got ${cardsInGrid[0].height}px`)
+
+  // 5. Hero mockup scaled down proportionally (<= 350px width)
+  const heroMockup = hero.children.find(c => c.name.includes('Mockup') || c.name.includes('Showcase'))
+  if (heroMockup) {
+    assert.ok(heroMockup.width <= 350, `Hero mockup must fit within mobile width, got ${heroMockup.width}px`)
+  }
+})
+
+// ----------------------------------------------------
+// TEST 14: Full 13-Section Landing Page (No Swallowed Sections, Single Mobile Frame)
+// ----------------------------------------------------
+await testCase('Full Landing Page: All 13 sections retained in main frame without consumption into nav', async () => {
+  const root = new MockNode('FRAME', 'Landing Page Full Desktop', 1440, 5200)
+
+  // 1. Top Announcement Bar (1440x36)
+  const promoBar = new MockNode('FRAME', 'Announcement Bar', 1440, 36)
+  promoBar.x = 0; promoBar.y = 0
+  promoBar.appendChild(createText('Promo Text', 'Need rush production? Ask our factory direct hotline', 12, 400, 20, 520, 8))
+  root.appendChild(promoBar)
+
+  // 2. Site Header (1440x80)
+  const header = new MockNode('FRAME', 'Main Site Header', 1440, 80)
+  header.x = 0; header.y = 36
+  header.appendChild(createText('Brand Logo', 'POSH XCCESSORIES', 22, 180, 28, 40, 26))
+  const searchBar = new MockNode('FRAME', 'Search Bar Input', 400, 40)
+  searchBar.x = 420; searchBar.y = 20
+  header.appendChild(searchBar)
+  const cartBtn = createText('Shopping Cart', '🛒 Cart (0)', 14, 90, 24, 1310, 28)
+  header.appendChild(cartBtn)
+  root.appendChild(header)
+
+  // 3. Category Links Bar (1440x44)
+  const catBar = new MockNode('FRAME', 'Category Links Bar', 1440, 44)
+  catBar.x = 0; catBar.y = 116
+  const catNames = ['All Categories', 'Featured Picks', 'Drinkware', 'Journals & Portfolios', 'Tech Gear', 'Writing', 'Closeouts', 'E-Flyer']
+  for (let c = 0; c < catNames.length; c++) {
+    catBar.appendChild(createText(`Cat Link ${c + 1}`, catNames[c], 13, 110, 20, 40 + c * 130, 12))
+  }
+  root.appendChild(catBar)
+
+  // 4. Hero Section (1440x550)
+  const hero = new MockNode('FRAME', 'Hero Section', 1440, 550)
+  hero.x = 0; hero.y = 160
+  const heroText = new MockNode('FRAME', 'Hero Content', 560, 380)
+  heroText.x = 60; heroText.y = 60
+  heroText.appendChild(createText('Hero Badge', 'PREMIUM IMPRINT COLLECTION', 11, 200, 20, 0, 0))
+  heroText.appendChild(createText('Hero Title', 'Journals that carry your brand.', 44, 520, 100, 0, 30))
+  heroText.appendChild(createText('Hero Subtitle', 'Soft-touch covers in rich contemporary tones.', 16, 480, 50, 0, 140))
+  heroText.appendChild(createButton('Hero CTA', 'Shop Journal Collection', 180, 44, 0, 210))
+  hero.appendChild(heroText)
+  const heroImg = createImage('Hero Main Mockup', 640, 420, 720, 60)
+  hero.appendChild(heroImg)
+  root.appendChild(hero)
+
+  // 5. Mini Categories (1440x260)
+  const miniCats = new MockNode('FRAME', 'Mini Categories Row', 1440, 260)
+  miniCats.x = 0; miniCats.y = 710
+  for (let m = 0; m < 3; m++) {
+    const mini = createCard(`Mini Card ${m + 1}`, `Category ${m + 1}`, 'Explore products', 380, 200, 60 + m * 440, 30)
+    miniCats.appendChild(mini)
+  }
+  root.appendChild(miniCats)
+
+  // 6. Trust Badges (1440x120)
+  const badges = new MockNode('FRAME', 'Trust Badges Banner', 1440, 120)
+  badges.x = 0; badges.y = 970
+  for (let b = 0; b < 4; b++) {
+    const badge = new MockNode('FRAME', `Badge ${b + 1}`, 280, 70)
+    badge.x = 60 + b * 320; badge.y = 25
+    badge.appendChild(createText(`Badge Title ${b + 1}`, `Trust Badge ${b + 1}`, 14, 200, 24, 40, 10))
+    badges.appendChild(badge)
+  }
+  root.appendChild(badges)
+
+  // 7. Featured Products Grid (1440x560)
+  const featured = new MockNode('FRAME', 'Featured Products Section', 1440, 560)
+  featured.x = 0; featured.y = 1090
+  featured.appendChild(createText('Featured Heading', 'Featured Products', 28, 400, 36, 60, 20))
+  for (let p = 0; p < 4; p++) {
+    const pCard = new MockNode('FRAME', `Product Card ${p + 1}`, 280, 420)
+    pCard.x = 60 + p * 320; pCard.y = 80
+    pCard.appendChild(createImage('PImg', 260, 220, 10, 10))
+    pCard.appendChild(createText('PTitle', `Pro Series Item ${p + 1}`, 16, 240, 22, 10, 240))
+    pCard.appendChild(createText('PPrice', '$8.85 to $11.00', 14, 200, 20, 10, 270))
+    pCard.appendChild(createButton('PBtn', 'Add to Quote', 260, 36, 10, 310))
+    featured.appendChild(pCard)
+  }
+  root.appendChild(featured)
+
+  // 8. Shop by Industry (1440x540)
+  const industry = new MockNode('FRAME', 'Shop by Industry [PROPOSED]', 1440, 540)
+  industry.x = 0; industry.y = 1650
+  industry.appendChild(createText('Ind Heading', 'Shop by Industry', 28, 400, 36, 60, 20))
+  for (let ind = 0; ind < 4; ind++) {
+    const indCard = createCard(`Ind Card ${ind + 1}`, `Industry ${ind + 1}`, 'Curated pairings', 280, 200, 60 + ind * 320, 80)
+    industry.appendChild(indCard)
+  }
+  root.appendChild(industry)
+
+  // 9. Explore All 18 Categories (1440x440)
+  const categoriesSec = new MockNode('FRAME', 'Explore All 18 Categories', 1440, 440)
+  categoriesSec.x = 0; categoriesSec.y = 2190
+  categoriesSec.appendChild(createText('Cat Heading', 'Explore All 18 Categories', 28, 400, 36, 60, 20))
+  for (let c = 0; c < 4; c++) {
+    const cCard = createCard(`Cat Item ${c + 1}`, `Category ${c + 1}`, 'Select category', 280, 180, 60 + c * 320, 80)
+    categoriesSec.appendChild(cCard)
+  }
+  root.appendChild(categoriesSec)
+
+  // 10. Promotional Collections (1440x460)
+  const collectionsSec = new MockNode('FRAME', 'Promotional Collections', 1440, 460)
+  collectionsSec.x = 0; collectionsSec.y = 2630
+  collectionsSec.appendChild(createText('Col Heading', 'Promotional Collections', 28, 400, 36, 60, 20))
+  for (let col = 0; col < 2; col++) {
+    const colCard = createCard(`Col Card ${col + 1}`, `Collection ${col + 1}`, 'Curated kits', 600, 280, 60 + col * 660, 80)
+    collectionsSec.appendChild(colCard)
+  }
+  root.appendChild(collectionsSec)
+
+  // 11. Distributors Custom Pricing Matrix (1440x260)
+  const pricingSec = new MockNode('FRAME', 'Distributors: Access Your Custom Pricing Matrix', 1440, 260)
+  pricingSec.x = 0; pricingSec.y = 3090
+  pricingSec.appendChild(createText('Pricing Title', 'Distributors: Access Your Custom Pricing Matrix', 26, 600, 36, 80, 40))
+  pricingSec.appendChild(createButton('Pricing CTA', 'Distributor Login', 160, 44, 80, 120))
+  root.appendChild(pricingSec)
+
+  // 12. Promotions & Factory Closeout Alerts (1440x200)
+  const alertsSec = new MockNode('FRAME', 'Promotions & Factory Closeout Alerts', 1440, 200)
+  alertsSec.x = 0; alertsSec.y = 3350
+  alertsSec.appendChild(createText('Alerts Title', 'Promotions & Factory Closeout Alerts', 22, 500, 30, 80, 30))
+  alertsSec.appendChild(createButton('Subscribe Btn', 'Subscribe', 140, 40, 1100, 30))
+  root.appendChild(alertsSec)
+
+  // 13. Footer Section (1440x450)
+  const footer = new MockNode('FRAME', 'Site Footer', 1440, 450)
+  footer.x = 0; footer.y = 3550
+  footer.appendChild(createText('Footer Info', 'POSH XCCESSORIES, Inc.', 18, 300, 24, 60, 40))
+  footer.appendChild(createText('Footer Copyright', '© 2026 POSH XCCESSORIES. All rights reserved.', 12, 400, 20, 60, 380))
+  root.appendChild(footer)
+
+  // Execute engine
+  const log = []
+  await applyResponsiveEngine(root, 'mobile', log)
+
+  // Assertions
+  assert.strictEqual(root.width, 390, 'Root must be resized to 390px')
+  assert.strictEqual(root.children.length, 13, `All 13 sections must remain in the mobile layout frame (0 sections deleted), got ${root.children.length}`)
+
+  // Verify Header reflowed cleanly
+  assert.strictEqual(header.width, 390, 'Header must be 390px')
+  assert.ok(header.height <= 60, `Header height must be compact (<= 60px), got ${header.height}px`)
+  const hamburger = header.children.find(c => c.name === 'Mobile Menu Icon')
+  assert.ok(hamburger, 'Header must contain mobile menu icon')
+
+  // Verify Total Page Height accommodates all 13 sections
+  assert.ok(root.height >= 4000, `Mobile page height must accommodate all 13 sections (>= 4000px), got ${root.height}px`)
+
+  // Verify sequential non-overlapping Y positioning and top-to-bottom order
+  assert.strictEqual(root.children[0].name, 'Announcement Bar', 'First section must be Announcement Bar')
+  assert.strictEqual(root.children[1].name, 'Main Site Header', 'Second section must be Main Site Header')
+  assert.strictEqual(root.children[root.children.length - 1].name, 'Site Footer', 'Last section must be Site Footer')
+  assert.strictEqual(root.children[0].y, 0, 'Announcement Bar must start at y = 0')
+  assert.ok(root.children[root.children.length - 1].y >= 3000, 'Footer must be at the bottom (y >= 3000)')
+
+  for (let i = 0; i < root.children.length - 1; i++) {
+    const curr = root.children[i]
+    const next = root.children[i + 1]
+    assert.ok(next.y >= curr.y + curr.height - 2, `Section "${next.name}" (y=${next.y}) must be below "${curr.name}" (bottom=${curr.y + curr.height})`)
+  }
+})
+
+await testCase('Auto Layout Landing Page: Vertical AL root retains exact natural order & no text squashing', async () => {
+  const root = new MockNode('FRAME', 'Auto Layout E-Commerce Storefront', 1440, 4800)
+  root.layoutMode = 'VERTICAL'
+  root.paddingTop = 0
+  root.itemSpacing = 20
+
+  const topBar = new MockNode('FRAME', 'Promo Bar', 1440, 40)
+  topBar.appendChild(createText('Top Promo', 'Limited time factory discount', 12, 300, 20, 0, 0))
+  root.appendChild(topBar)
+
+  const header = new MockNode('FRAME', 'Header Nav', 1440, 70)
+  header.appendChild(createText('Brand', 'STORE BRAND', 20, 160, 24, 20, 20))
+  root.appendChild(header)
+
+  const multiColSec = new MockNode('FRAME', 'Shop by Industry', 1440, 500)
+  // 4 column titles side-by-side on desktop
+  const colTitles = ['Corporate Gifting', 'Higher Education', 'Healthcare Networks', 'Financial Services']
+  for (let c = 0; c < colTitles.length; c++) {
+    const colTitle = createText(`ColTitle ${c + 1}`, colTitles[c], 18, 180, 24, 60 + c * 320, 40)
+    multiColSec.appendChild(colTitle)
+  }
+  root.appendChild(multiColSec)
+
+  const footer = new MockNode('FRAME', 'Footer Section', 1440, 400)
+  footer.appendChild(createText('Foot Copy', '© 2026 Store Brand. All rights reserved.', 12, 350, 20, 40, 340))
+  root.appendChild(footer)
+
+  const log = []
+  await applyResponsiveEngine(root, 'mobile', log)
+
+  assert.strictEqual(root.width, 390, 'Root must be resized to 390px')
+  assert.strictEqual(root.children.length, 4, 'All 4 sections must remain in the frame')
+  assert.strictEqual(root.children[0].name, 'Promo Bar', 'First section must be Promo Bar at y=0')
+  assert.strictEqual(root.children[0].y, 0, 'Promo Bar y must be 0')
+  assert.strictEqual(root.children[root.children.length - 1].name, 'Footer Section', 'Last section must be Footer Section')
+  assert.ok(root.children[root.children.length - 1].y > 200, 'Footer must be below earlier sections')
+
+  // Verify that multi-column titles were not squashed into 10-15px side-by-side slices
+  for (const c of multiColSec.children) {
+    if (c.type === 'TEXT') {
+      assert.ok(c.width >= 100, `Text node "${c.name}" must not be crushed into a narrow width (< 100px), got ${c.width}px`)
+    }
+  }
+})
+
+await testCase('Text Auto-Width & Multi-Card Horizontal AL Flipping to Vertical', async () => {
+  const root = new MockNode('FRAME', 'Storefront Section Test', 1440, 2000)
+
+  // 1. Horizontal AL frame containing 3 category cards (Drinkware, Portfolios, Tech)
+  const miniCats = new MockNode('FRAME', 'Mini Categories AL Row', 1440, 240)
+  miniCats.layoutMode = 'HORIZONTAL'
+  miniCats.itemSpacing = 20
+  miniCats.paddingLeft = 40
+  miniCats.paddingRight = 40
+
+  const catNames = ['Drinkware', 'Portfolios', 'Power & Mobile']
+  for (let m = 0; m < 3; m++) {
+    const card = new MockNode('FRAME', `Category Card ${m + 1}`, 420, 200)
+    const title = createText(`CardTitle ${m + 1}`, catNames[m], 18, 120, 24, 20, 20)
+    const pill = createText(`CardPill ${m + 1}`, 'Shop Category', 13, 100, 20, 20, 150)
+    card.appendChild(title)
+    card.appendChild(pill)
+    miniCats.appendChild(card)
+  }
+  root.appendChild(miniCats)
+
+  // 2. Loose background shape for a footer content frame
+  const footerContent = new MockNode('FRAME', 'Footer Content Frame', 1440, 400)
+  footerContent.x = 0; footerContent.y = 800
+  footerContent.appendChild(createText('Foot Brand', 'BRAND NAME', 20, 200, 24, 40, 40))
+  footerContent.appendChild(createText('Foot Copy', '© 2026 Brand. All rights reserved.', 12, 350, 20, 40, 320))
+
+  const footerBg = new MockNode('RECTANGLE', 'Footer Dark Background', 1440, 400)
+  footerBg.x = 0; footerBg.y = 800
+  footerBg.fills = [{ type: 'SOLID', color: { r: 0.05, g: 0.08, b: 0.15 } }]
+
+  root.appendChild(footerBg)
+  root.appendChild(footerContent)
+
+  const log = []
+  await applyResponsiveEngine(root, 'mobile', log)
+
+  // 1. Verify Horizontal AL row of 3 cards flipped to VERTICAL on mobile
+  assert.strictEqual(miniCats.layoutMode, 'VERTICAL', 'Mini categories AL frame with 3 cards must flip to VERTICAL on mobile')
+  assert.strictEqual(miniCats.children.length, 3, 'All 3 cards must remain')
+  for (const card of miniCats.children) {
+    assert.strictEqual(card.width, 390 - (miniCats.paddingLeft + miniCats.paddingRight), 'Each card must span full mobile width')
+    // Verify text inside card took WIDTH_AND_HEIGHT (Auto Width) for short labels
+    const title = card.children.find(c => c.name.startsWith('CardTitle'))
+    assert.ok(title, 'Card title exists')
+    assert.strictEqual(title.textAutoResize, 'WIDTH_AND_HEIGHT', 'Short card title must have Auto Width (WIDTH_AND_HEIGHT)')
+  }
+
+  // 2. Verify loose background rectangle was absorbed into footer content frame
+  assert.strictEqual(root.children.filter(c => c.name === 'Footer Dark Background').length, 0, 'Loose background rectangle must be absorbed, not left as top-level section')
+  assert.ok(footerContent.children.some(c => c.name === 'Footer Dark Background') || footerContent.fills.length > 0, 'Footer content frame must now have the background')
+})
+
+await testCase('Corner Radius Pill Distortion Guard & Auto-Width on Badges/Buttons', async () => {
+  const root = new MockNode('FRAME', 'Pricing & Tag Section Test', 1440, 1000)
+
+  // Section with dark container card containing pill CTA buttons
+  const darkSection = new MockNode('FRAME', 'Distributors: Access Your Custom Pricing Matrix', 1440, 300)
+  darkSection.fills = [{ type: 'SOLID', color: { r: 0.05, g: 0.10, b: 0.20 } }]
+  darkSection.cornerRadius = 16
+
+  const title = createText('Pricing Title', 'Distributors: Access Your Custom Pricing Matrix', 24, 600, 32, 60, 40)
+  const sub = createText('Pricing Sub', 'Unlock negotiated contract tiers and save quotes.', 14, 500, 24, 60, 80)
+
+  // Pill CTA with cornerRadius = 9999
+  const pillBtn = createButton('Distributor Login Btn', 'Distributor Login', 180, 44, 60, 130)
+  pillBtn.cornerRadius = 9999
+  pillBtn.layoutMode = 'HORIZONTAL'
+
+  // Pill badge with cornerRadius = 9999
+  const badge = new MockNode('FRAME', 'PROPOSED Badge', 100, 28)
+  badge.cornerRadius = 9999
+  badge.layoutMode = 'HORIZONTAL'
+  const badgeTxt = createText('Badge Txt', 'PROPOSED', 11, 80, 16, 10, 6)
+  badge.appendChild(badgeTxt)
+
+  darkSection.appendChild(title)
+  darkSection.appendChild(sub)
+  darkSection.appendChild(pillBtn)
+  darkSection.appendChild(badge)
+  root.appendChild(darkSection)
+
+  const log = []
+  await applyResponsiveEngine(root, 'mobile', log)
+
+  // 1. Verify dark container card did NOT absorb the button's 9999 pill radius (must be <= 24px)
+  assert.ok(darkSection.cornerRadius <= 24, `Container card corner radius must not be deformed into a giant pill (<= 24px), got ${darkSection.cornerRadius}px`)
+
+  // 2. Verify button label and badge text retained Auto Width (WIDTH_AND_HEIGHT)
+  const btnTxt = pillBtn.children.find(c => c.type === 'TEXT')
+  assert.ok(btnTxt, 'Button text exists')
+  assert.strictEqual(btnTxt.textAutoResize, 'WIDTH_AND_HEIGHT', 'Button text must take Auto Width (WIDTH_AND_HEIGHT)')
+  assert.strictEqual(badgeTxt.textAutoResize, 'WIDTH_AND_HEIGHT', 'Badge text must take Auto Width (WIDTH_AND_HEIGHT)')
+
+  // 3. Verify badge frame took HUG horizontal sizing
+  assert.strictEqual(badge.layoutSizingHorizontal, 'HUG', 'Badge frame must have Hug horizontal sizing (HUG)')
+  assert.ok(badge.width <= 140, `Badge width must hug its content (<= 140px), got ${badge.width}px`)
 })
 
 console.log(`\n========================================`)
